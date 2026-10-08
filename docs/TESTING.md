@@ -39,7 +39,7 @@ one database. CI (`.github/workflows/ci.yml`) runs everything with PostgreSQL
 | Gateway | `services/game-server/test/gateway-*.test.ts` | Authentication on upgrade, audiences, privacy of hole cards, controller takeover, spectator delay, slow consumers |
 | Game runtime | `services/game-server/test/game-runtime.test.ts` | Tournaments on PostgreSQL through the durable outbox; every hand verified against the revealed seed; restarts mid-tournament |
 | End to end | `services/game-server/test/e2e-http.test.ts` | Admin login, CSRF, create, register, WebSocket play to a champion, payouts, CSV, hand history, report, seed reveal, public verification, audit chain |
-| Chaos | `tests/chaos` | Process crash + restart on the same database; PostgreSQL backends killed repeatedly mid-play; a two-node cluster losing the node that hosts Johnny |
+| Chaos | `tests/chaos` | Process crash + restart; PostgreSQL backends killed repeatedly; injected database latency; a 5 s Redis outage under a two-node cluster; a cluster losing the node that hosts Johnny |
 | Load | `tests/load` | Real HTTP registrations and one WebSocket per player; latency percentiles and throughput |
 | UI | `packages/ui/test`, `apps/*/test` | Components, formatting, screens (jsdom) |
 
@@ -53,6 +53,13 @@ one database. CI (`.github/workflows/ci.yml`) runs everything with PostgreSQL
 - **database outage** — every PostgreSQL backend of the server is terminated
   four times during play. Commands in flight fail or are reconciled from the
   log; nothing is applied twice and nothing is lost.
+- **slow database** — every PostgreSQL round trip is delayed 20–120 ms for
+  12 seconds mid-play: play slows down, nothing breaks, the tournament
+  finishes with chips conserved.
+- **Redis outage** — two nodes reach Redis through a TCP proxy that is cut for
+  5 seconds. No node may keep processing on a lease it cannot renew, so every
+  actor stops (never two owners); when Redis returns the cluster re-acquires
+  the leases, recovers from the logs, re-arms timers and finishes.
 - **failover** — two nodes share PostgreSQL and Redis; the node hosting the
   director is killed. The survivor waits for the leases to expire, recovers
   Johnny and the tables from their logs (with the determinism check on),
