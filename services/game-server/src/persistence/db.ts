@@ -19,8 +19,15 @@ export type Queryable = Pick<pg.PoolClient, 'query'>;
 export class Database {
   readonly pool: pg.Pool;
 
-  constructor(connectionString: string, max = 20) {
-    this.pool = new pg.Pool({ connectionString, max, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 10_000 });
+  constructor(connectionString: string, max = 20, opts: { searchPath?: string } = {}) {
+    if (opts.searchPath !== undefined && !/^[a-z_][a-z0-9_]*$/.test(opts.searchPath)) throw new Error('Invalid schema name');
+    this.pool = new pg.Pool({
+      connectionString,
+      max,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+      ...(opts.searchPath ? { options: `-c search_path=${opts.searchPath}` } : {}),
+    });
   }
 
   query<R extends pg.QueryResultRow = pg.QueryResultRow>(text: string, values?: unknown[]): Promise<pg.QueryResult<R>> {

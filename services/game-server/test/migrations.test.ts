@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Database, migrate } from '../src/persistence/db';
+import { migrate } from '../src/persistence/db';
+import type { Database } from '../src/persistence/db';
+import { createTestDatabase } from './helpers/db';
 
 const url = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!url)('migrations (requires TEST_DATABASE_URL)', () => {
   let db: Database;
   beforeAll(async () => {
-    db = new Database(url!);
-    await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    db = await createTestDatabase('migrations', { migrate: false });
   });
   afterAll(async () => {
     await db?.close();
