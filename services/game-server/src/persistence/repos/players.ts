@@ -178,6 +178,15 @@ export class PlayerRepo {
     return toEntry(r.rows[0]!);
   }
 
+  async setRejoinCodeHash(playerId: string, hash: string): Promise<void> {
+    await this.q.query(`UPDATE players SET rejoin_code_hash = $2, rejoin_code_issued_at = now() WHERE id = $1`, [playerId, hash]);
+  }
+
+  async getRejoinCodeHash(playerId: string): Promise<string | null> {
+    const r = await this.q.query<{ rejoin_code_hash: string | null }>(`SELECT rejoin_code_hash FROM players WHERE id = $1`, [playerId]);
+    return r.rows[0]?.rejoin_code_hash ?? null;
+  }
+
   async publicIdExists(tournamentId: string, publicId: string): Promise<boolean> {
     const r = await this.q.query(`SELECT 1 FROM players WHERE tournament_id = $1 AND public_id = $2`, [tournamentId, publicId]);
     return (r.rowCount ?? 0) > 0;
