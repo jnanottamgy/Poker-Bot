@@ -27,23 +27,28 @@ export function useServerCountdown(
   options: ServerCountdownOptions = {},
 ): number {
   const { intervalMs = 200, now = Date.now } = options;
-  const [remaining, setRemaining] = useState(() => remainingMs(deadline, now(), serverOffsetMs));
   // Kept in a ref so an inline `now` does not restart the interval every render.
   const nowRef = useRef(now);
   nowRef.current = now;
+  // The value is stored WITH the inputs it was computed for. When the deadline
+  // (or offset) changes, the first render derives a fresh value instead of
+  // returning the previous deadline's number (which flashed "00:00 / HURRY").
+  const [state, setState] = useState(() => ({ deadline, off: serverOffsetMs, ms: remainingMs(deadline, now(), serverOffsetMs) }));
+  const current = state.deadline === deadline && state.off === serverOffsetMs ? state.ms : remainingMs(deadline, nowRef.current(), serverOffsetMs);
+  const period = Math.max(50, Number.isFinite(intervalMs) ? intervalMs : 200);
 
   useEffect(() => {
     const tick = (): number => {
       const r = remainingMs(deadline, nowRef.current(), serverOffsetMs);
-      setRemaining(r);
+      setState({ deadline, off: serverOffsetMs, ms: r });
       return r;
     };
     if (tick() <= 0) return undefined;
     const id = setInterval(() => {
       if (tick() <= 0) clearInterval(id);
-    }, intervalMs);
+    }, period);
     return () => clearInterval(id);
-  }, [deadline, serverOffsetMs, intervalMs]);
+  }, [deadline, serverOffsetMs, period]);
 
-  return remaining;
+  return current;
 }

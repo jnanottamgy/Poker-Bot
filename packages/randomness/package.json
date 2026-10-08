@@ -2,12 +2,13 @@
   "name": "@jpb/randomness",
   "version": "0.1.0",
   "private": true,
-  "description": "Cryptographically secure randomness: CSPRNG, HMAC-SHA256 DRBG, unbiased integers, Fisher-Yates.",
+  "description": "Cryptographically secure randomness: CSPRNG (node entry), portable SHA-256/HMAC, HMAC-SHA256 counter-mode stream, unbiased integers, Fisher-Yates.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
   },
   "scripts": {
     "test": "vitest run --root ../.. --project packages packages/randomness/test",

@@ -56,21 +56,24 @@ export interface ConnectionBannerProps {
 export function ConnectionBanner({ state, staleForSeconds, attempt, onRetry, onTakeover, className }: ConnectionBannerProps) {
   if (state === 'connected') return null;
   const copy = CONNECTION_COPY[state];
+  const stale = typeof staleForSeconds === 'number' && staleForSeconds > 0;
   return (
-    <div className={cx('jpb-conn', `jpb-conn--${state}`, className)} role={state === 'reconnecting' ? 'status' : 'alert'} aria-live="assertive">
-      <span className="jpb-conn__icon">{state === 'reconnecting' ? <Spinner size="sm" /> : <Icon name={ICONS[state]} />}</span>
-      <div className="jpb-conn__text">
-        <p className="jpb-conn__title">
-          {copy.title}
-          {state === 'reconnecting' && attempt !== undefined && attempt > 1 && <span className="jpb-conn__attempt"> attempt {attempt}</span>}
-        </p>
-        <p className="jpb-conn__body">{copy.body}</p>
-        {typeof staleForSeconds === 'number' && staleForSeconds > 0 && (
-          <p className="jpb-conn__stale">
-            <Icon name="clock" /> Not live — last update {staleForSeconds}s ago
-          </p>
-        )}
+    <div className={cx('jpb-conn', `jpb-conn--${state}`, className)}>
+      {/* Only the state itself is live; the per-second counter and attempt number are not, so they are never re-announced. */}
+      <div className="jpb-conn__live" role={state === 'reconnecting' ? 'status' : 'alert'}>
+        <span className="jpb-conn__icon">{state === 'reconnecting' ? <Spinner size="sm" /> : <Icon name={ICONS[state]} />}</span>
+        <div className="jpb-conn__text">
+          <p className="jpb-conn__title">{copy.title}</p>
+          <p className="jpb-conn__body">{copy.body}</p>
+        </div>
       </div>
+      {(stale || (state === 'reconnecting' && attempt !== undefined && attempt > 1)) && (
+        <p className="jpb-conn__stale">
+          <Icon name="clock" />
+          {stale && <span>Not live — last update {staleForSeconds}s ago</span>}
+          {state === 'reconnecting' && attempt !== undefined && attempt > 1 && <span className="jpb-conn__attempt">attempt {attempt}</span>}
+        </p>
+      )}
       {state === 'offline' && onRetry && (
         <Button size="sm" variant="secondary" icon="refresh" onClick={onRetry}>
           Retry

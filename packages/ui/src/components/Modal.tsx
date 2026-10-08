@@ -19,7 +19,11 @@ export interface ModalProps {
   dismissible?: boolean;
   /** Tone accent for the header rule. */
   tone?: 'default' | 'danger' | 'gold';
-  /** Element to focus first (defaults to the first focusable element). */
+  /**
+   * Element to focus first. Default: the dialog heading (tabIndex -1), so screen
+   * readers start at the title and pointer users do not see a focus ring drawn
+   * around the first button. Tab then moves to the first control.
+   */
   initialFocusRef?: RefObject<HTMLElement | null>;
   /** Render in place instead of a portal (gallery / tests). */
   inline?: boolean;
@@ -31,6 +35,35 @@ const FOCUSABLE =
 
 function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.hasAttribute('aria-hidden'));
+}
+
+/**
+ * Wrap Tab / Shift+Tab inside `items`. Also wraps when focus is on something
+ * that is not in the list (the panel itself, non-interactive content), so
+ * focus can never escape an aria-modal dialog.
+ */
+export function trapTab(e: { key: string; shiftKey: boolean; preventDefault: () => void }, items: HTMLElement[]): void {
+  if (e.key !== 'Tab') return;
+  if (items.length === 0) {
+    e.preventDefault();
+    return;
+  }
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+  const inside = active !== null && items.includes(active);
+  if (e.shiftKey && (!inside || active === first)) {
+    e.preventDefault();
+    last?.focus();
+  } else if (!e.shiftKey && (!inside || active === last)) {
+    e.preventDefault();
+    first?.focus();
+  }
+}
+
+/** Focusable descendants of `root` (exported for overlays that trap focus themselves). */
+export function focusableIn(root: HTMLElement): HTMLElement[] {
+  return focusables(root);
 }
 
 /**
@@ -55,13 +88,14 @@ export function Modal({
 }: ModalProps) {
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const opener = useRef<Element | null>(null);
 
   useEffect(() => {
     if (!open) return undefined;
     opener.current = document.activeElement;
     const node = panel.current;
-    const target = initialFocusRef?.current ?? (node ? focusables(node)[0] : null) ?? node;
+    const target = initialFocusRef?.current ?? heading.current ?? node;
     target?.focus();
     const prevOverflow = document.body.style.overflow;
     if (!inline) document.body.style.overflow = 'hidden';
@@ -85,15 +119,7 @@ export function Modal({
       e.preventDefault();
       return;
     }
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last?.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first?.focus();
-    }
+    trapTab(e, items);
   };
 
   const content = (
@@ -110,7 +136,7 @@ export function Modal({
       >
         <header className="jpb-modal__head">
           <div>
-            <h2 id={`${id}-title`} className="jpb-modal__title">
+            <h2 id={`${id}-title`} ref={heading} tabIndex={-1} className="jpb-modal__title">
               {title}
             </h2>
             {description && (

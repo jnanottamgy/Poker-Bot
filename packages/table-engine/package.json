@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@jpb/poker-engine": "*",
+    "@jpb/randomness": "*",
     "@jpb/shared-types": "*"
   }
 }

@@ -32,7 +32,8 @@ export interface ConfirmDialogProps {
   error?: ReactNode;
   /** 'danger' (default) or 'warning' styling. */
   severity?: 'danger' | 'warning';
-  onConfirm: (input: { reason: string }) => void;
+  /** `requestId` is unique per opening of the dialog: send it as an idempotency key. */
+  onConfirm: (input: { reason: string; requestId: string }) => void;
   onCancel: () => void;
   inline?: boolean;
 }
@@ -63,20 +64,36 @@ export function ConfirmDialog({
   const [typed, setTyped] = useState('');
   const [reason, setReason] = useState('');
   const wordRef = useRef<HTMLInputElement>(null);
+  // Synchronous lock: a double click (or Enter then click) must not send twice
+  // even before the parent flips `pending`.
+  const sentRef = useRef(false);
+  const openCount = useRef(0);
+  const prevPending = useRef(pending);
 
   useEffect(() => {
     if (open) {
+      openCount.current += 1;
       setTyped('');
       setReason('');
     }
+    sentRef.current = false;
   }, [open]);
+  useEffect(() => {
+    if (error) sentRef.current = false;
+  }, [error]);
+  useEffect(() => {
+    if (prevPending.current && !pending) sentRef.current = false;
+    prevPending.current = pending;
+  }, [pending]);
 
   const wordOk = typed === confirmWord;
   const reasonOk = reason.trim().length >= minReasonLength;
   const canConfirm = wordOk && reasonOk && !pending;
 
   const submit = (): void => {
-    if (canConfirm) onConfirm({ reason: reason.trim() });
+    if (!canConfirm || sentRef.current) return;
+    sentRef.current = true;
+    onConfirm({ reason: reason.trim(), requestId: `${id}-${openCount.current}` });
   };
 
   return (

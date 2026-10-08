@@ -128,6 +128,8 @@ export interface RandomStateOptions {
   inFlight?: boolean;
   /** Allow BREAKING tables with residual players. */
   breaking?: boolean;
+  /** Minimum seated players per table (dense fields exercise balancing rather than breaking). */
+  minPlayers?: number;
 }
 
 /**
@@ -138,7 +140,7 @@ export function stateArb(opts: RandomStateOptions = {}): fc.Arbitrary<TableSumma
   const minTables = opts.minTables ?? 2;
   const maxTables = opts.maxTables ?? 12;
   const tableArb = fc.record({
-    seats: fc.uniqueArray(fc.integer({ min: 0, max: 8 }), { minLength: 0, maxLength: 9 }),
+    seats: fc.uniqueArray(fc.integer({ min: 0, max: 8 }), { minLength: opts.minPlayers ?? 0, maxLength: 9 }),
     seatData: fc.array(seatDataArb, { minLength: 9, maxLength: 9 }),
     reservedPicks: fc.array(fc.integer({ min: 0, max: 8 }), { maxLength: opts.inFlight === true ? 2 : 0 }),
     movingMask: fc.array(fc.boolean(), { minLength: 9, maxLength: 9 }),

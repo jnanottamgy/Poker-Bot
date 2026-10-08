@@ -1,7 +1,7 @@
 import type { CardCode } from './cards';
 import type { AnteType, BlindLevel } from './config';
 import type { ActionId, Chips, EpochMs, HandId, PlayerId, SeatIndex, TableId, TournamentId } from './ids';
-import type { ActionType, HandEvent, HandPhase, IllegalActionCode, LegalActions, PlayerActionIntent } from './hand';
+import type { ActionType, ForcedBetType, HandEvent, HandPhase, IllegalActionCode, LegalActions, PlayerActionIntent, Street } from './hand';
 
 /**
  * TABLE LIFECYCLE (normative):
@@ -84,6 +84,8 @@ export type TableCommand =
       stack: Chips;
       stats: SeatPositionStats;
       moveId: string | null;
+      /** Initial connection state (default true: a seated player is assumed present until PLAYER_CONNECTION says otherwise). */
+      connected?: boolean;
     }
   | { type: 'REMOVE_PLAYER'; playerId: PlayerId; reason: RemovalReason; moveId: string | null }
   | { type: 'SET_BLINDS'; blinds: CurrentBlinds }
@@ -105,6 +107,12 @@ export type TableCommand =
   | { type: 'PLAYER_CONNECTION'; playerId: PlayerId; connected: boolean }
   | { type: 'ADMIN_FORCE_TIMEOUT' }
   | { type: 'ADMIN_ADJUST_STACK'; playerId: PlayerId; newStack: Chips }
+  /**
+   * Gives the player currently to act `ms` extra milliseconds (admin "add time").
+   * The deadline moves, a fresh ACTION_TIMEOUT token is issued and ACTION_REQUESTED
+   * is re-emitted with the same turnVersion. Rejected when nobody is acting.
+   */
+  | { type: 'ADMIN_ADD_TIME'; ms: number }
   | { type: 'START' }
   | { type: 'CLOSE' };
 
@@ -120,7 +128,16 @@ export interface TableCommandEnvelope {
 export type TableLevelEvent =
   | { kind: 'TABLE_CREATED'; tableNumber: number; maxSeats: number }
   | { kind: 'PLAYER_SEATED'; seat: SeatIndex; playerId: PlayerId; displayName: string; publicId: string; stack: Chips; moveId: string | null }
-  | { kind: 'PLAYER_REMOVED'; seat: SeatIndex; playerId: PlayerId; reason: RemovalReason; stack: Chips; moveId: string | null }
+  | {
+      kind: 'PLAYER_REMOVED';
+      seat: SeatIndex;
+      playerId: PlayerId;
+      reason: RemovalReason;
+      stack: Chips;
+      moveId: string | null;
+      /** Position stats at departure (feed the next SEAT_PLAYER). Optional for producers other than the table engine. */
+      stats?: SeatPositionStats;
+    }
   | { kind: 'BLINDS_SCHEDULED'; blinds: CurrentBlinds }
   | { kind: 'TABLE_STATUS_CHANGED'; status: TableStatus; holds: HoldReason[]; frozen: boolean }
   | {
@@ -160,13 +177,25 @@ export interface HandResultReport {
   handNumber: number;
   completedAt: EpochMs;
   buttonSeat: SeatIndex;
+  /** Seat that POSTED the small blind; null = dead small blind. */
   smallBlindSeat: SeatIndex | null;
   bigBlindSeat: SeatIndex;
+  /**
+   * Small-blind POSITION of the hand even when the small blind was dead (needed by
+   * the dead-button rules: TableSummary.lastSmallBlindSeat). Heads-up = button.
+   */
+  smallBlindPosition?: SeatIndex;
+  /** Server time at which the hand was dealt. */
+  startedAt?: EpochMs;
+  /** True when the hand reached a showdown (false: won uncontested). */
+  showdown?: boolean;
   players: Array<{
     playerId: PlayerId;
     seat: SeatIndex;
     startingStack: Chips;
     finalStack: Chips;
+    /** Position stats after this hand (already counting it). */
+    stats?: SeatPositionStats;
   }>;
   /** Players with 0 chips after pot distribution, with the stack they started the hand with (rank tie-break). */
   busted: Array<{ playerId: PlayerId; seat: SeatIndex; startingStack: Chips }>;
@@ -184,7 +213,13 @@ export type ActionRejectCode =
   | 'PLAYER_NOT_SEATED'
   | 'TABLE_CLOSED'
   | 'RATE_LIMITED'
-  | 'INVALID_COMMAND';
+  | 'INVALID_COMMAND'
+  /** SEAT_PLAYER: the seat is occupied (or out of range). */
+  | 'SEAT_UNAVAILABLE'
+  /** SEAT_PLAYER: the player already sits at this table. */
+  | 'PLAYER_ALREADY_SEATED'
+  /** Command allowed only between hands (ADMIN_ADJUST_STACK, CLOSE). */
+  | 'HAND_IN_PROGRESS';
 
 export interface CommandReply {
   ok: boolean;
@@ -278,6 +313,122 @@ export interface AdminTableView extends TableViewBase {
   pendingBlinds: CurrentBlinds | null;
   lastProgressAt: EpochMs;
   handsPlayed: number;
+  /* ---- Optional admin detail (produced by @jpb/table-engine) ---- */
+  /** START has been received (the table deals once it has two players and no hold). */
+  started?: boolean;
+  /** When the pending NEXT_HAND timer is due (null: none pending or frozen). */
+  nextHandAt?: EpochMs | null;
+  /** Emergency-freeze details (null when not frozen). */
+  freeze?: AdminFreezeView | null;
+  /** The decision currently awaited (null when nobody is acting). */
+  turn?: AdminTurnView | null;
+  /** Blind positions of the last dealt hand and the prediction for the next one. */
+  positions?: AdminPositionsView;
+  /** Running table statistics. */
+  counters?: TableCounters;
+  /** Every forced bet and action of the hand in progress (or the last hand), in order. */
+  handActionLog?: HandActionLogEntry[];
+  /** SHA-256 deck hash of the hand in progress (or the last hand); null before the first hand. */
+  handDeckHash?: string | null;
+  /** Most recent completed hands, newest last (bounded). */
+  recentHands?: TableHandSummary[];
+  /** Last accepted command time (the reducer's clock). */
+  clock?: EpochMs;
 }
+
+export interface AdminFreezeView {
+  since: EpochMs;
+  /** Action time the acting player had left when the table froze (restored on UNFREEZE). */
+  turnRemainingMs: number | null;
+  /** Delay left on the pending NEXT_HAND timer when the table froze. */
+  nextHandRemainingMs: number | null;
+}
+
+export interface AdminTurnView {
+  seat: SeatIndex;
+  playerId: PlayerId;
+  turnVersion: number;
+  requestedAt: EpochMs;
+  /** Visible deadline; actions are accepted until deadline + actionGraceMs. */
+  deadline: EpochMs;
+  hardDeadline: EpochMs;
+  timerMs: number;
+  /** The shorter away timer was used for this turn. */
+  away: boolean;
+  /** Extra time granted by ADMIN_ADD_TIME during this turn. */
+  addedMs: number;
+}
+
+export interface AdminPositionsView {
+  lastButtonSeat: SeatIndex | null;
+  lastSmallBlindSeat: SeatIndex | null;
+  lastBigBlindSeat: SeatIndex | null;
+  /** Positions the next hand will use with the players currently eligible (null: fewer than two). */
+  next: {
+    buttonSeat: SeatIndex;
+    smallBlindPosition: SeatIndex;
+    smallBlindPosted: boolean;
+    bigBlindSeat: SeatIndex;
+    headsUp: boolean;
+  } | null;
+}
+
+/** Running statistics of one table. */
+export interface TableCounters {
+  handsPlayed: number;
+  largestPot: Chips;
+  /** Sum of all awarded pots (average pot = totalPotChips / handsPlayed). */
+  totalPotChips: Chips;
+  showdowns: number;
+  /** Actions applied by timer expiry or ADMIN_FORCE_TIMEOUT. */
+  timeouts: number;
+  /** Sum of (completedAt - startedAt) over completed hands. */
+  totalHandDurationMs: number;
+  playersSeated: number;
+  playersRemoved: number;
+  eliminations: number;
+}
+
+/** Compact record of a completed hand for lists (admin "recent hands"). */
+export interface TableHandSummary {
+  handId: HandId;
+  handNumber: number;
+  startedAt: EpochMs;
+  completedAt: EpochMs;
+  buttonSeat: SeatIndex;
+  totalPot: Chips;
+  showdown: boolean;
+  board: CardCode[];
+  winners: Array<{ seat: SeatIndex; playerId: PlayerId; amount: Chips }>;
+  busted: PlayerId[];
+}
+
+/** One entry of a hand's action log (same shape as @jpb/poker-engine HandLogEntry). */
+export type HandActionLogEntry =
+  | {
+      kind: 'FORCED_BET';
+      street: 'PREFLOP';
+      seat: SeatIndex;
+      playerId: PlayerId;
+      betType: ForcedBetType;
+      amount: Chips;
+      allIn: boolean;
+    }
+  | {
+      kind: 'ACTION';
+      street: Street;
+      seat: SeatIndex;
+      playerId: PlayerId;
+      /** The intent type the player sent. */
+      intent: ActionType;
+      /** The resolved action (ALL_IN resolves to CALL, BET or RAISE). */
+      action: Exclude<ActionType, 'ALL_IN'>;
+      amount: Chips;
+      toAmount: Chips;
+      allIn: boolean;
+      fullRaise: boolean | null;
+      currentBetAfter: Chips;
+      timeout: boolean;
+    };
 
 export type BlindLevelSnapshot = Pick<BlindLevel, 'level' | 'smallBlind' | 'bigBlind' | 'ante'>;

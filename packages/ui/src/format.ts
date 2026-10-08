@@ -9,7 +9,8 @@ const CHIP_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 /** Exact chip count with thousands separators: 10000 -> "10,000". */
 export function formatChips(n: number): string {
   if (!Number.isFinite(n)) return '0';
-  return CHIP_FORMAT.format(Math.trunc(n));
+  // `|| 0` turns -0 (from -0 or -0.4) into 0: Intl would print "-0".
+  return CHIP_FORMAT.format(Math.trunc(n) || 0);
 }
 
 /** Plain integer count with separators (players, tables, hands). */
@@ -66,7 +67,18 @@ export function currencyLocale(currency: string): string {
 
 /** Number of minor units in one major unit for a currency (INR 2, JPY 0, ...). */
 export function currencyMinorDigits(currency: string): number {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+}
+
+/** Fallback for a missing / malformed currency code from the server (never throw during render). */
+export const DEFAULT_CURRENCY = 'INR';
+
+function safeCurrency(currency: string): string {
+  return /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : DEFAULT_CURRENCY;
 }
 
 /**
@@ -74,18 +86,23 @@ export function currencyMinorDigits(currency: string): number {
  * 10000000 INR (paise) -> "₹1,00,000"; 12345 USD (cents) -> "$123.45".
  * Whole amounts drop the ".00"; fractional amounts always show every minor digit.
  */
-export function formatMoneyMinor(minor: number, currency = 'INR'): string {
-  const code = currency.toUpperCase();
+export function formatMoneyMinor(minor: number, currency: string = DEFAULT_CURRENCY): string {
+  const code = safeCurrency(typeof currency === 'string' ? currency : '');
   const digits = currencyMinorDigits(code);
   const factor = 10 ** digits;
   const safeMinor = Number.isFinite(minor) ? Math.trunc(minor) : 0;
   const whole = safeMinor % factor === 0;
-  return new Intl.NumberFormat(currencyLocale(code), {
-    style: 'currency',
-    currency: code,
-    minimumFractionDigits: whole ? 0 : digits,
-    maximumFractionDigits: digits,
-  }).format(safeMinor / factor);
+  try {
+    return new Intl.NumberFormat(currencyLocale(code), {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: whole ? 0 : digits,
+      maximumFractionDigits: digits,
+    }).format(safeMinor / factor);
+  } catch {
+    // A three-letter code Intl does not know (e.g. "XYZ" on an old engine).
+    return `${code} ${formatChips(Math.trunc(safeMinor / factor))}`;
+  }
 }
 
 /**
@@ -125,7 +142,9 @@ export function formatOrdinal(n: number): string {
 /** Percent with one decimal max: 0.4567 -> "45.7%". */
 export function formatPercent(ratio: number): string {
   if (!Number.isFinite(ratio)) return '0%';
-  const v = Math.round(ratio * 1000) / 10;
+  // toPrecision(12) removes binary noise first (201/400*1000 = 502.49999999999994),
+  // so exact half-tenths round up: 50.25% -> "50.3%".
+  const v = Math.round(Number((ratio * 1000).toPrecision(12))) / 10;
   return `${Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1)}%`;
 }
 
@@ -184,11 +203,26 @@ export function cardShort(code: CardCode | string): string {
   return `${RANK_DISPLAY[parsed.rank]}${SUIT_GLYPHS[parsed.suit]}`;
 }
 
-/** Initials for avatar discs: "Johnny Chan" -> "JC", "ace" -> "A". */
+/** First user-perceived character (code point, so an emoji is never split into a lone surrogate). */
+function firstGlyph(s: string): string {
+  return Array.from(s)[0] ?? '';
+}
+
+/** Initials for avatar discs: "Johnny Chan" -> "JC", "ace" -> "A", "😀 Bob" -> "😀B". */
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
-  const first = parts[0]?.[0] ?? '';
-  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+  const first = firstGlyph(parts[0] ?? '');
+  const last = parts.length > 1 ? firstGlyph(parts[parts.length - 1] ?? '') : '';
   return (first + last).toUpperCase();
+}
+
+/**
+ * Short seat name for narrow pods: "Diego Alvarez" -> "Diego A.". A single
+ * word is returned unchanged; the full name always stays in the accessible label.
+ */
+export function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return name.trim();
+  return `${parts[0]} ${firstGlyph(parts[parts.length - 1] ?? '').toUpperCase()}.`;
 }

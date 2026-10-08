@@ -21,7 +21,7 @@ export function YourTurnBanner({ detail, deadline, serverOffsetMs, timerMs, clas
         <span className="jpb-yourturn__title">YOUR TURN</span>
         {detail && <span className="jpb-yourturn__detail">{detail}</span>}
       </div>
-      <ActionTimer deadline={deadline} serverOffsetMs={serverOffsetMs} totalMs={timerMs} size="md" />
+      <ActionTimer deadline={deadline} serverOffsetMs={serverOffsetMs} totalMs={timerMs} size="md" announce />
     </div>
   );
 }

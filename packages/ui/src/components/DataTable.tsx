@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { cx } from '../cx';
 import { formatCount } from '../format';
+import { Button } from './Button';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { IconButton } from './IconButton';
+import { Menu } from './Menu';
+import type { MenuItem } from './Menu';
 import { Skeleton } from './Skeleton';
 
 export interface Column<T> {
@@ -16,7 +19,7 @@ export interface Column<T> {
   sortValue?: (row: T) => number | string;
   align?: 'left' | 'right' | 'center';
   width?: string;
-  /** Use tabular numerals. */
+  /** Use tabular numerals and right-align the cell AND its header. */
   numeric?: boolean;
 }
 
@@ -30,6 +33,9 @@ export interface PaginationProps {
   pageSize: number;
   total: number;
   onPageChange: (page: number) => void;
+  /** Offer a page-size picker (e.g. [25, 50, 100, 200]). */
+  pageSizeOptions?: number[];
+  onPageSizeChange?: (size: number) => void;
 }
 
 export interface DataTableProps<T> {
@@ -38,7 +44,7 @@ export interface DataTableProps<T> {
   rowKey: (row: T) => string;
   /** Accessible table name. */
   label: string;
-  /** Row activation (click / Enter / Space). Rows become focusable buttons-in-a-row. */
+  /** Row activation (click / Enter / Space on the row itself). Clicks on controls inside a row never activate it. */
   onRowActivate?: (row: T) => void;
   /** Controlled sort; omit for client-side uncontrolled sorting of `rows`. */
   sort?: SortState | null;
@@ -47,18 +53,47 @@ export interface DataTableProps<T> {
   pagination?: PaginationProps;
   loading?: boolean;
   empty?: ReactNode;
-  /** Highlight a selected row. */
+  /** The row whose detail is open (aria-current). */
   selectedKey?: string | null;
   /** Max height for the scroll area (sticky header). */
   maxHeight?: string;
   density?: 'comfortable' | 'compact';
+  /** Checkbox column + bulk bar. Controlled: pass `checkedKeys` + `onCheckedChange`. */
+  checkedKeys?: readonly string[];
+  onCheckedChange?: (keys: string[]) => void;
+  /** Bulk actions for the checked rows, rendered in the sticky bulk bar ("3 selected · Move · Message …"). */
+  bulkActions?: (keys: string[]) => ReactNode;
+  /** Trailing ⋯ menu per row. */
+  rowActions?: (row: T) => Array<MenuItem | 'separator'>;
+  /** Human name of a row for checkbox / menu labels (e.g. the player name). Default: the row key. */
+  rowLabel?: (row: T) => string;
+  /** Keep the first column visible while scrolling horizontally. Default true. */
+  stickyFirstColumn?: boolean;
   className?: string;
 }
 
+const INTERACTIVE = 'a,button,input,select,textarea,label,[role="button"],[role="switch"],[role="menuitem"],[role="checkbox"]';
+
+function Checkbox({ checked, indeterminate = false, label, onChange }: { checked: boolean; indeterminate?: boolean; label: string; onChange: (v: boolean) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <label className="jpb-dt__check">
+      <input ref={ref} type="checkbox" checked={checked} aria-label={label} onChange={(e) => onChange(e.target.checked)} />
+      <span className="jpb-dt__checkbox" aria-hidden="true">
+        {indeterminate ? <Icon name="minus" /> : checked ? <Icon name="check" /> : null}
+      </span>
+    </label>
+  );
+}
+
 /**
- * Sortable data table with sticky header, keyboard-accessible rows
- * (Tab to a row, Enter/Space to open, ArrowUp/ArrowDown to move),
- * aria-sort on headers, pagination footer and empty/loading states.
+ * Sortable data table: sticky header, sticky first column, keyboard rows
+ * (Tab to a row, Enter/Space opens it, ArrowUp/ArrowDown move), aria-sort,
+ * optional checkbox selection with a sticky bulk-action bar, per-row ⋯ menus,
+ * pagination with page sizes, empty and loading states.
  */
 export function DataTable<T>({
   columns,
@@ -74,11 +109,20 @@ export function DataTable<T>({
   selectedKey,
   maxHeight,
   density = 'comfortable',
+  checkedKeys,
+  onCheckedChange,
+  bulkActions,
+  rowActions,
+  rowLabel,
+  stickyFirstColumn = true,
   className,
 }: DataTableProps<T>) {
   const [localSort, setLocalSort] = useState<SortState | null>(null);
   const controlled = sortProp !== undefined;
   const sort = controlled ? sortProp : localSort;
+  const selectable = checkedKeys !== undefined && onCheckedChange !== undefined;
+  const checked = useMemo(() => new Set(checkedKeys ?? []), [checkedKeys]);
+  const nameOf = (row: T): string => rowLabel?.(row) ?? rowKey(row);
 
   const sorted = useMemo(() => {
     if (controlled || !sort) return rows;
@@ -101,6 +145,8 @@ export function DataTable<T>({
   };
 
   const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, row: T): void => {
+    // Keys from a control inside the row belong to that control.
+    if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onRowActivate?.(row);
@@ -111,19 +157,71 @@ export function DataTable<T>({
     }
   };
 
+  const onRowClick = (e: MouseEvent<HTMLTableRowElement>, row: T): void => {
+    if (e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+    onRowActivate?.(row);
+  };
+
+  const pageKeys = sorted.map(rowKey);
+  const checkedOnPage = pageKeys.filter((k) => checked.has(k)).length;
+  const setChecked = (key: string, on: boolean): void => {
+    const next = new Set(checked);
+    if (on) next.add(key);
+    else next.delete(key);
+    onCheckedChange?.([...next]);
+  };
+  const setAllOnPage = (on: boolean): void => {
+    const next = new Set(checked);
+    for (const k of pageKeys) {
+      if (on) next.add(k);
+      else next.delete(k);
+    }
+    onCheckedChange?.([...next]);
+  };
+
   const pages = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize)) : 1;
+  const colCount = columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0);
 
   return (
-    <div className={cx('jpb-dt', `jpb-dt--${density}`, className)}>
-      <div className="jpb-dt__scroll" style={{ maxHeight }} tabIndex={-1}>
+    <div className={cx('jpb-dt', `jpb-dt--${density}`, stickyFirstColumn && 'has-sticky-col', selectable && 'is-selectable', className)}>
+      {selectable && checked.size > 0 && (
+        <div className="jpb-dt__bulk" role="region" aria-label="Bulk actions">
+          <span className="jpb-dt__bulkcount" aria-live="polite">
+            <span className="jpb-num">{formatCount(checked.size)}</span> selected
+          </span>
+          <span className="jpb-dt__bulkactions">{bulkActions?.([...checked])}</span>
+          <Button size="sm" variant="ghost" icon="x" onClick={() => onCheckedChange?.([])}>
+            Clear
+          </Button>
+        </div>
+      )}
+      <div className="jpb-dt__scroll" style={{ maxHeight }} tabIndex={0} role="region" aria-label={`${label} (scrollable)`}>
         <table className="jpb-dt__table" aria-label={label} aria-busy={loading || undefined}>
           <thead>
             <tr>
-              {columns.map((c) => {
+              {selectable && (
+                <th scope="col" className="jpb-dt__selcol">
+                  <Checkbox
+                    checked={checkedOnPage > 0 && checkedOnPage === pageKeys.length}
+                    indeterminate={checkedOnPage > 0 && checkedOnPage < pageKeys.length}
+                    label={`Select all ${formatCount(pageKeys.length)} rows on this page`}
+                    onChange={setAllOnPage}
+                  />
+                </th>
+              )}
+              {columns.map((c, ci) => {
                 const active = sort?.key === c.key;
                 const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : c.sortValue ? 'none' : undefined;
+                const align = c.align ?? (c.numeric ? 'right' : undefined);
                 return (
-                  <th key={c.key} scope="col" aria-sort={ariaSort} style={{ width: c.width, textAlign: c.align }} className={cx(c.numeric && 'is-num')}>
+                  <th
+                    key={c.key}
+                    scope="col"
+                    aria-sort={ariaSort}
+                    data-numeric={c.numeric || undefined}
+                    style={{ width: c.width, textAlign: align }}
+                    className={cx(c.numeric && 'is-num', ci === 0 && 'is-first')}
+                  >
                     {c.sortValue ? (
                       <button type="button" className={cx('jpb-dt__sort', active && 'is-active')} onClick={() => toggleSort(c.key)}>
                         {c.header}
@@ -135,14 +233,19 @@ export function DataTable<T>({
                   </th>
                 );
               })}
+              {rowActions && (
+                <th scope="col" className="jpb-dt__actcol">
+                  <span className="jpb-sr-only">Actions</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {loading &&
               Array.from({ length: 5 }, (_, i) => (
                 <tr key={`sk-${i}`} className="jpb-dt__skeleton">
-                  {columns.map((c) => (
-                    <td key={c.key}>
+                  {Array.from({ length: colCount }, (_, ci) => (
+                    <td key={ci}>
                       <Skeleton width="70%" />
                     </td>
                   ))}
@@ -151,20 +254,31 @@ export function DataTable<T>({
             {!loading &&
               sorted.map((row) => {
                 const key = rowKey(row);
+                const isChecked = checked.has(key);
                 return (
                   <tr
                     key={key}
                     tabIndex={onRowActivate ? 0 : undefined}
-                    className={cx(onRowActivate && 'is-interactive', selectedKey === key && 'is-selected')}
-                    aria-selected={selectedKey !== undefined ? selectedKey === key : undefined}
-                    onClick={onRowActivate ? () => onRowActivate(row) : undefined}
+                    className={cx(onRowActivate && 'is-interactive', selectedKey === key && 'is-selected', isChecked && 'is-checked')}
+                    aria-current={selectedKey === key ? 'true' : undefined}
+                    onClick={onRowActivate ? (e) => onRowClick(e, row) : undefined}
                     onKeyDown={onRowActivate ? (e) => onRowKey(e, row) : undefined}
                   >
-                    {columns.map((c) => (
-                      <td key={c.key} style={{ textAlign: c.align }} className={cx(c.numeric && 'is-num jpb-num')}>
+                    {selectable && (
+                      <td className="jpb-dt__selcol">
+                        <Checkbox checked={isChecked} label={`Select ${nameOf(row)}`} onChange={(v) => setChecked(key, v)} />
+                      </td>
+                    )}
+                    {columns.map((c, ci) => (
+                      <td key={c.key} style={{ textAlign: c.align ?? (c.numeric ? 'right' : undefined) }} className={cx(c.numeric && 'is-num jpb-num', ci === 0 && 'is-first')}>
                         {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? '')}
                       </td>
                     ))}
+                    {rowActions && (
+                      <td className="jpb-dt__actcol">
+                        <Menu label={`Actions for ${nameOf(row)}`} items={rowActions(row)} />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -180,6 +294,18 @@ export function DataTable<T>({
               : `${formatCount(pagination.page * pagination.pageSize + 1)}–${formatCount(Math.min(pagination.total, (pagination.page + 1) * pagination.pageSize))} of ${formatCount(pagination.total)}`}
           </span>
           <span className="jpb-dt__pager">
+            {pagination.pageSizeOptions && pagination.onPageSizeChange && (
+              <label className="jpb-dt__size">
+                <span>Rows</span>
+                <select className="jpb-input jpb-dt__sizeselect" value={pagination.pageSize} onChange={(e) => pagination.onPageSizeChange?.(Number(e.target.value))}>
+                  {pagination.pageSizeOptions.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <IconButton icon="chevron-left" label="Previous page" size="sm" variant="secondary" disabled={pagination.page <= 0} onClick={() => pagination.onPageChange(pagination.page - 1)} />
             <span className="jpb-dt__page" aria-live="polite">
               Page {pagination.page + 1} of {formatCount(pages)}

@@ -95,12 +95,31 @@ export function snapTo(value: number, legal: LegalActions, step: number): number
  * Intent for a sized amount. Choosing the maximum sends ALL_IN (when legal) so
  * the server applies its exact all-in total; otherwise BET/RAISE with `amount`
  * = the TOTAL street contribution ("to"), per the protocol.
+ *
+ * Never emits a disallowed intent: when neither BET nor RAISE is legal it
+ * returns ALL_IN only if `canAllIn`, otherwise null (nothing to send).
  */
-export function intentForAmount(legal: LegalActions, to: number): PlayerActionIntent {
+export function intentForAmount(legal: LegalActions, to: number): PlayerActionIntent | null {
   const kind = aggressiveKind(legal);
+  if (kind === null) return legal.canAllIn ? { type: 'ALL_IN' } : null;
   const amount = clampTo(to, legal);
-  if ((amount >= legal.maxTo && legal.canAllIn) || kind === null) return { type: 'ALL_IN' };
+  if (amount >= legal.maxTo && legal.canAllIn) return { type: 'ALL_IN' };
   return { type: kind, amount };
+}
+
+/**
+ * Index of an EARLIER preset with the same amount (presets clamped to the same
+ * value are duplicates, e.g. "Min 2,400" and "2x 2,400"), or -1.
+ */
+export function duplicateOf(presets: readonly RaisePreset[], index: number): number {
+  const p = presets[index];
+  if (!p) return -1;
+  return presets.findIndex((q, i) => i < index && q.to === p.to);
+}
+
+/** True when going all-in cannot be a raise (calling already commits the whole stack). */
+export function allInIsJustACall(legal: LegalActions): boolean {
+  return isCallAllIn(legal) || (legal.canCall && allInTotal(legal) <= legal.currentBet);
 }
 
 /** Button label for the check/call slot, e.g. "CHECK", "CALL 500". Null when neither is legal. */

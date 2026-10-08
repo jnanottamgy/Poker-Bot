@@ -62,10 +62,12 @@ export function Leaderboard({ rows, mode, currency = 'INR', compactStacks = true
                 {formatCount(r.rank)}
               </td>
               <td className="jpb-board-list__name">
-                <span>{r.name}</span>
-                {r.isYou && <span className="jpb-board-list__you">YOU</span>}
-                {r.publicId && <span className="jpb-board-list__pid">{r.publicId}</span>}
-                {mode === 'stack' && r.tableNumber != null && <span className="jpb-board-list__pid">Table {r.tableNumber}</span>}
+                <span className="jpb-board-list__namewrap">
+                  <span>{r.name}</span>
+                  {r.isYou && <span className="jpb-board-list__you">YOU</span>}
+                  {r.publicId && <span className="jpb-board-list__pid">{r.publicId}</span>}
+                  {mode === 'stack' && r.tableNumber !== undefined && r.tableNumber !== null && <span className="jpb-board-list__pid">Table {r.tableNumber}</span>}
+                </span>
               </td>
               <td className="is-num jpb-num" title={r.stack !== undefined ? `${formatChips(r.stack)} chips` : undefined}>
                 {mode === 'finish'

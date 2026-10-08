@@ -1,12 +1,12 @@
 import type { ActionType, CardCode, PublicSeatView } from '@jpb/shared-types';
 import { lastActionLabel } from '../actionLogic';
 import { cx } from '../cx';
-import { formatChips, formatChipsCompact, initials } from '../format';
+import { cardLabel, formatChips, formatChipsCompact, initials, shortName } from '../format';
 import { ActionTimer } from './ActionTimer';
 import { HoleCards } from './HoleCards';
+import { Icon } from './Icon';
 import type { CardSize } from './PlayingCard';
 import { Badge } from './StatusPill';
-import type { Tone } from './StatusPill';
 
 export interface PlayerSeatProps {
   name: string;
@@ -43,6 +43,12 @@ export interface PlayerSeatProps {
   winningCards?: CardCode[];
   /** The viewer (adds "YOU"). */
   hero?: boolean;
+  /**
+   * Chips in front this street. The table renders bets on the felt in the wide
+   * layout; inside the pod (tall layout) it is shown only when no last-action
+   * chip already states it (e.g. posted blinds).
+   */
+  bet?: number;
   /** Visual density. `pod` is the default table pod; `row` is a list row (admin). */
   layout?: 'pod' | 'row';
   cardSize?: CardSize;
@@ -65,15 +71,29 @@ export function seatPropsFromView(view: PublicSeatView): PlayerSeatProps {
     connected: view.connected,
     lastAction: view.lastAction,
     shownCards: view.shownCards,
+    bet: view.streetContribution,
   };
 }
 
-const STATUS_TONE: Readonly<Record<string, Tone>> = {
-  'ALL-IN': 'warning',
-  FOLDED: 'neutral',
-  AWAY: 'neutral',
-  DISCONNECTED: 'danger',
-};
+/** Verb and amount of a last action, split for the two-line chip ("RAISE" over "2,400"). */
+export function lastActionParts(action: ActionType, toAmount: number, amount: number): { verb: string; amount: number | null } {
+  switch (action) {
+    case 'FOLD':
+      return { verb: 'FOLD', amount: null };
+    case 'CHECK':
+      return { verb: 'CHECK', amount: null };
+    case 'CALL':
+      return { verb: 'CALL', amount };
+    case 'BET':
+      return { verb: 'BET', amount: toAmount };
+    case 'RAISE':
+      return { verb: 'RAISE', amount: toAmount };
+    case 'ALL_IN':
+      return { verb: 'ALL-IN', amount: toAmount };
+    default:
+      return { verb: String(action).replace(/_/g, ' '), amount: null };
+  }
+}
 
 function statusText(p: PlayerSeatProps): string[] {
   const out: string[] = [];
@@ -86,8 +106,10 @@ function statusText(p: PlayerSeatProps): string[] {
 
 /**
  * One player at the table. Every state has a text form: position badges
- * read "D / SB / BB" (spoken "Dealer button" etc.), FOLDED, ALL-IN,
- * AWAY / DISCONNECTED, "TO ACT", "WINNER +12,400".
+ * read "D / SB / BB" (spoken "Dealer button" etc.), FOLDED, ALL-IN (in the
+ * stack line), AWAY / OFFLINE (icon after the name + text badge where there is
+ * room), "TO ACT", "WINNER +12,400". The whole seat is one labelled group so a
+ * screen reader hears it in one sentence, including cards shown at showdown.
  */
 export function PlayerSeat(props: PlayerSeatProps) {
   const {
@@ -101,6 +123,7 @@ export function PlayerSeat(props: PlayerSeatProps) {
     folded = false,
     allIn = false,
     connected = true,
+    away = false,
     acting = false,
     deadline = null,
     timerMs = 0,
@@ -115,6 +138,7 @@ export function PlayerSeat(props: PlayerSeatProps) {
     hero = false,
     layout = 'pod',
     cardSize = 'sm',
+    bet = 0,
     className,
   } = props;
 
@@ -122,21 +146,27 @@ export function PlayerSeat(props: PlayerSeatProps) {
   const winner = typeof winAmount === 'number' && winAmount > 0;
   const cards = holeCards ?? shownCards ?? null;
   const showCards = inHand && (cards !== null || (showCardBacks && !folded));
+  const faceUp = showCards && cards !== null;
   const spoken = [
     hero ? `You, ${name}` : name,
     seat !== undefined ? `seat ${seat + 1}` : null,
-    `stack ${formatChips(stack)} chips`,
+    allIn && stack === 0 ? 'all-in, no chips behind' : `stack ${formatChips(stack)} chips`,
     isButton ? 'dealer button' : null,
     isSmallBlind ? 'small blind' : null,
     isBigBlind ? 'big blind' : null,
     ...statuses.map((s) => s.toLowerCase()),
     acting ? 'to act' : null,
     lastAction ? `last action ${lastActionLabel(lastAction.action, lastAction.toAmount, lastAction.amount).toLowerCase()}` : null,
+    // The card images are hidden to avoid double reading, so say them here.
+    !hero && shownCards ? `shows ${shownCards.map(cardLabel).join(' and ')}` : null,
     winner ? `winner, won ${formatChips(winAmount)} chips` : null,
     handDescription ?? null,
   ]
     .filter(Boolean)
     .join(', ');
+
+  const last = lastAction && !acting && !winner && !folded ? lastActionParts(lastAction.action, lastAction.toAmount, lastAction.amount) : null;
+  const lastIsAllIn = lastAction?.action === 'ALL_IN';
 
   return (
     <div
@@ -147,10 +177,12 @@ export function PlayerSeat(props: PlayerSeatProps) {
         folded && 'is-folded',
         allIn && 'is-allin',
         !connected && 'is-offline',
-        props.away && 'is-away',
+        away && 'is-away',
         winner && 'is-winner',
         hero && 'is-hero',
         !inHand && 'is-sitting-out',
+        faceUp && 'has-shown',
+        bet > 0 && 'has-bet',
         className,
       )}
       role="group"
@@ -162,42 +194,55 @@ export function PlayerSeat(props: PlayerSeatProps) {
         </div>
       )}
       <div className="jpb-seat__pod" aria-hidden="true">
-        {acting && <span className="jpb-seat__toact">TO ACT</span>}
-        {winner && <span className="jpb-seat__winner">WINNER +{formatChipsCompact(winAmount)}</span>}
         <div className="jpb-seat__avatar">
           {initials(name)}
           {acting && deadline !== null && timerMs > 0 && (
-            <ActionTimer className="jpb-seat__timer" deadline={deadline} serverOffsetMs={serverOffsetMs} totalMs={timerMs} size="sm" announce={false} />
+            <ActionTimer className="jpb-seat__timer" deadline={deadline} serverOffsetMs={serverOffsetMs} totalMs={timerMs} size="sm" />
           )}
         </div>
         <div className="jpb-seat__info">
-          <span className="jpb-seat__name">
+          <span className="jpb-seat__name" title={name}>
             {hero && <span className="jpb-seat__you">YOU</span>}
-            {name}
+            <span className="jpb-seat__fullname">{name}</span>
+            <span className="jpb-seat__shortname">{shortName(name)}</span>
+            {!connected && <Icon name="wifi-off" className="jpb-seat__stateicon is-offline" />}
+            {connected && away && <Icon name="moon" className="jpb-seat__stateicon" />}
           </span>
-          <span className="jpb-seat__stack jpb-num" title={`${formatChips(stack)} chips`}>
-            {allIn && stack === 0 ? 'ALL-IN' : formatChipsCompact(stack)}
+          <span className={cx('jpb-seat__stack', 'jpb-num', allIn && 'is-allin')} title={`${formatChips(stack)} chips`}>
+            {allIn ? 'ALL-IN' : formatChipsCompact(stack)}
           </span>
         </div>
-        <div className="jpb-seat__badges">
+        <div className="jpb-seat__tags">
+          {acting && <span className="jpb-seat__flag jpb-seat__flag--act">TO ACT</span>}
+          {winner && <span className="jpb-seat__flag jpb-seat__flag--win">WINNER +{formatChipsCompact(winAmount)}</span>}
           {isButton && (
-            <Badge tone="neutral" variant="solid" className="jpb-seat__dealer" srLabel="Dealer button">
+            <Badge tone="neutral" variant="solid" className="jpb-seat__dealer">
               D
             </Badge>
           )}
-          {isSmallBlind && <Badge tone="info" srLabel="Small blind">SB</Badge>}
-          {isBigBlind && <Badge tone="info" srLabel="Big blind">BB</Badge>}
-          {statuses.map((s) => (
-            <Badge key={s} tone={STATUS_TONE[s] ?? 'neutral'} variant={s === 'ALL-IN' ? 'solid' : 'soft'}>
-              {s}
+          {isSmallBlind && <Badge tone="info">SB</Badge>}
+          {isBigBlind && <Badge tone="info">BB</Badge>}
+          {folded && !allIn && <Badge className="jpb-seat__state">FOLDED</Badge>}
+          {!connected && (
+            <Badge tone="danger" className="jpb-seat__state jpb-seat__state--sec">
+              <span className="jpb-seat__long">DISCONNECTED</span>
+              <span className="jpb-seat__short">OFFLINE</span>
             </Badge>
-          ))}
+          )}
+          {connected && away && <Badge className="jpb-seat__state jpb-seat__state--sec">AWAY</Badge>}
+          {last && (
+            <span className={cx('jpb-seat__last', `jpb-seat__last--${lastAction?.action.toLowerCase()}`, last.amount === null && 'is-verb-only', lastIsAllIn && 'is-amount-only')}>
+              {!lastIsAllIn && <span className="jpb-seat__lastverb">{last.verb}</span>}
+              {last.amount !== null && <span className="jpb-seat__lastamt jpb-num">{formatChips(last.amount)}</span>}
+            </span>
+          )}
+          {bet > 0 && !(lastAction && !folded) && (
+            <span className="jpb-seat__bet jpb-num">
+              <span className="jpb-chip" />
+              {formatChips(bet)}
+            </span>
+          )}
         </div>
-        {lastAction && !acting && !winner && (
-          <span className={cx('jpb-seat__last', `jpb-seat__last--${lastAction.action.toLowerCase()}`)}>
-            {lastActionLabel(lastAction.action, lastAction.toAmount, lastAction.amount)}
-          </span>
-        )}
         {handDescription && <span className="jpb-seat__hand">{handDescription}</span>}
       </div>
     </div>

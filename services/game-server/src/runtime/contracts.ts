@@ -64,11 +64,30 @@ export type PlayerChannelMessage =
   /** Sessions were revoked by an admin: close every socket of this player. */
   | { kind: 'SESSIONS_REVOKED'; playerId: PlayerId };
 
+/**
+ * Published on `tournament:{id}:events` when the broadcast display's featured
+ * table changes (admin display endpoint); gateways re-point DISPLAY sockets.
+ */
+export interface DisplayFeaturedMessage {
+  kind: 'DISPLAY_FEATURED_CHANGED';
+  tournamentId: TournamentId;
+  tableId: TableId | null;
+}
+
+/** Everything that may arrive on `tournament:{id}:events`. */
+export type TournamentChannelMessage = TournamentEventMessage | DisplayFeaturedMessage;
+
 /** Published on `admin:{tournamentId}`. */
 export type AdminChannelMessage =
   | { kind: 'ALERT'; alert: unknown }
   | { kind: 'AUDIT'; entry: unknown }
-  | { kind: 'METRICS'; snapshot: unknown };
+  | { kind: 'METRICS'; snapshot: unknown }
+  /**
+   * An audited live hole-card reveal (VIEW_HOLE_CARDS, danger level 2) was
+   * performed for `tableId`. Gateways enable hole cards only on that admin's
+   * sockets watching the table (narrowed to one session when `sessionId` is set).
+   */
+  | { kind: 'HOLE_CARDS_REVEALED'; tableId: TableId; adminId: string; sessionId: string | null };
 
 /** What the gateway asks the runtime for (local call on one node, bus RPC across nodes). */
 export interface GatewayBackend {
@@ -80,6 +99,8 @@ export interface GatewayBackend {
   featuredTable(tournamentId: TournamentId): Promise<TableId | null>;
   /** Whether this player may spectate (eliminated + spectators allowed) or anyone may (public watch). */
   canSpectate(tournamentId: TournamentId, playerId: PlayerId | null): Promise<boolean>;
+  /** Whether broadcast DISPLAY sockets may follow this tournament (features.broadcastDisplay). */
+  canDisplay(tournamentId: TournamentId): Promise<boolean>;
   /** Spectator delay for this tournament in ms. */
   spectatorDelayMs(tournamentId: TournamentId): Promise<number>;
   submitPlayerAction(input: {

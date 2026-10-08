@@ -163,17 +163,24 @@ class PlanRun {
     return null;
   }
 
-  /** Fewest players (ties → highest tableNumber) among ACTIVE tables with no inbound reservations. */
-  private findBreakCandidate(): TableId | null {
+  /**
+   * Up to `k` tables to break, in selectTableToBreak order: fewest players
+   * (ties → highest tableNumber) among ACTIVE tables with no inbound
+   * reservations (breaking those would strand players already in transit).
+   */
+  private breakCandidates(k: number): TableId[] {
+    const out: TableId[] = [];
     const min = this.index.minCount();
     const max = this.index.maxCount();
-    if (min === null || max === null) return null;
+    if (min === null || max === null || k <= 0) return out;
     for (let c = min; c <= max; c += 1) {
       for (const id of this.index.tablesWithCount(c, 'DESC')) {
-        if (this.table(id).reservedSeats.length === 0) return id;
+        if (this.table(id).reservedSeats.length > 0) continue;
+        out.push(id);
+        if (out.length === k) return out;
       }
     }
-    return null;
+    return out;
   }
 
   // ---------------------------------------------------------------- actions
@@ -229,12 +236,19 @@ class PlanRun {
     return true;
   }
 
-  private breakTable(tableId: TableId): boolean {
-    const table = this.table(tableId);
-    this.setView(tableId, { ...table, status: 'BREAKING' });
-    this.indexUpdate(tableId, () => this.index.setBreaking(tableId, table.tableNumber));
-    this.push({ type: 'BREAK_TABLE', tableId });
-    return this.evacuate(tableId);
+  /**
+   * Break all `tableIds` at once: every one is marked BREAKING first (so none
+   * of them receives players), then each is evacuated in turn. False when some
+   * player cannot be placed.
+   */
+  private breakTables(tableIds: readonly TableId[]): boolean {
+    for (const tableId of tableIds) {
+      const table = this.table(tableId);
+      this.setView(tableId, { ...table, status: 'BREAKING' });
+      this.indexUpdate(tableId, () => this.index.setBreaking(tableId, table.tableNumber));
+      this.push({ type: 'BREAK_TABLE', tableId });
+    }
+    return tableIds.every((tableId) => this.evacuate(tableId));
   }
 
   /** BREAKING tables whose players have not all been sent away yet (e.g. an admin-initiated break). */
@@ -246,15 +260,17 @@ class PlanRun {
     }
   }
 
+  /**
+   * Break (activeTables - target) tables in one go. If their players cannot all
+   * be placed (no capacity / no free physical seat), retry with one table fewer;
+   * a break is never emitted partially.
+   */
   private breakSurplusTables(target: number): void {
-    while (this.index.activeTableCount > target) {
-      const candidate = this.findBreakCandidate();
-      if (candidate === null) return;
+    const candidates = this.breakCandidates(this.index.activeTableCount - target);
+    for (let n = candidates.length; n >= 1; n -= 1) {
       const cp = this.checkpoint();
-      if (!this.breakTable(candidate)) {
-        this.rollback(cp);
-        return;
-      }
+      if (this.breakTables(candidates.slice(0, n))) return;
+      this.rollback(cp);
     }
   }
 

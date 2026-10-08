@@ -14,7 +14,7 @@ export interface ActionTimerProps {
   size?: 'sm' | 'md' | 'lg';
   /** Show the HURRY / TIME caption under the ring (default true at md/lg). */
   showCaption?: boolean;
-  /** Announce 10s / 5s to screen readers (default true; enable only for the hero). */
+  /** Announce 10s / 5s to screen readers. Default false: enable ONLY for the hero's own timer. */
   announce?: boolean;
   className?: string;
 }
@@ -24,8 +24,9 @@ const ANNOUNCE_AT = [10, 5] as const;
 /**
  * Countdown ring with the number of seconds in the middle. Visual only: the
  * server enforces the deadline. Warning state (<= 5s) changes the ring color
- * AND adds a "HURRY" text cue; screen readers hear "10 seconds left" and
- * "5 seconds left" exactly once each.
+ * AND adds a "HURRY" text cue. With `announce` (hero only) screen readers hear
+ * each threshold (10s, 5s) at most once per deadline, with the real number of
+ * seconds left; a late mount announces only the threshold it is under.
  */
 export function ActionTimer({
   deadline,
@@ -34,7 +35,7 @@ export function ActionTimer({
   warnAtSeconds = 5,
   size = 'md',
   showCaption,
-  announce = true,
+  announce = false,
   className,
 }: ActionTimerProps) {
   const remaining = useServerCountdown(deadline, serverOffsetMs);
@@ -49,15 +50,13 @@ export function ActionTimer({
     setMessage('');
   }, [deadline]);
   useEffect(() => {
-    if (!announce || deadline === null) return;
-    for (const mark of ANNOUNCE_AT) {
-      if (secs <= mark && secs > 0 && !announced.current.has(mark)) {
-        // Mark every threshold already passed so a late mount does not double-announce.
-        for (const m of ANNOUNCE_AT) if (m >= mark) announced.current.add(m);
-        setMessage(`${mark} seconds left`);
-        break;
-      }
-    }
+    if (!announce || deadline === null || secs <= 0) return;
+    // The smallest threshold we are under: mounting with 3s left says "3 seconds
+    // left" once, never a stale "10 seconds left".
+    const mark = [...ANNOUNCE_AT].sort((a, b) => a - b).find((m) => secs <= m);
+    if (mark === undefined || announced.current.has(mark)) return;
+    for (const m of ANNOUNCE_AT) if (m >= mark) announced.current.add(m);
+    setMessage(`${secs} seconds left`);
   }, [secs, announce, deadline]);
 
   const r = 20;
