@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import { cx } from '../cx';
 import { formatChips } from '../format';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Button } from './Button';
 import { Icon } from './Icon';
 
@@ -13,42 +14,58 @@ export interface TableMoveCardProps {
   toSeat: number;
   stack: number;
   onContinue: () => void;
+  /** Render as a full-screen modal overlay (scrim, focus trap, Esc continues). */
+  overlay?: boolean;
   className?: string;
 }
 
-/** Full-screen-friendly "♠ TABLE CHANGE" notice (PlayerNotice TABLE_MOVE). Focuses Continue on mount. */
-export function TableMoveCard({ fromTableNumber, fromSeat, toTableNumber, toSeat, stack, onContinue, className }: TableMoveCardProps) {
+/**
+ * "TABLE CHANGE" notice (PlayerNotice TABLE_MOVE). The destination — table and
+ * seat — is the loudest thing on the card; the headline is context. Focus
+ * starts on the heading so screen readers read the notice first.
+ */
+export function TableMoveCard({ fromTableNumber, fromSeat, toTableNumber, toSeat, stack, onContinue, overlay = false, className }: TableMoveCardProps) {
   const uid = useId();
-  const btn = useRef<HTMLButtonElement>(null);
-  useEffect(() => btn.current?.focus(), []);
-  const from = fromTableNumber !== null ? `TABLE ${fromTableNumber}${fromSeat !== null ? ` / SEAT ${fromSeat + 1}` : ''}` : 'WAITING AREA';
-  const to = `TABLE ${toTableNumber} / SEAT ${toSeat + 1}`;
-  return (
-    <section className={cx('jpb-notice', 'jpb-move', className)} role="alertdialog" aria-labelledby={`${uid}-title`} aria-describedby={`${uid}-desc`}>
+  const root = useRef<HTMLElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useFocusTrap(root, overlay, { initial: heading, onEscape: onContinue });
+  useEffect(() => {
+    if (!overlay) heading.current?.focus();
+  }, [overlay]);
+  const from = fromTableNumber !== null ? `Table ${fromTableNumber}${fromSeat !== null ? ` · Seat ${fromSeat + 1}` : ''}` : 'Waiting area';
+  const card = (
+    <section
+      ref={root}
+      className={cx('jpb-notice', 'jpb-move', className)}
+      role="alertdialog"
+      aria-modal={overlay ? true : undefined}
+      aria-labelledby={`${uid}-title`}
+      aria-describedby={`${uid}-desc`}
+    >
       <p className="jpb-notice__eyebrow">
-        <span aria-hidden="true">♠ </span>TABLE CHANGE
+        <Icon name="move" className="jpb-notice__eyeicon" />
+        TABLE CHANGE
       </p>
-      <h2 id={`${uid}-title`} className="jpb-notice__title">
-        You have been moved.
+      <h2 id={`${uid}-title`} ref={heading} tabIndex={-1} className="jpb-notice__title jpb-move__title">
+        You have been moved
       </h2>
       <div id={`${uid}-desc`} className="jpb-move__route">
-        <div className="jpb-move__end">
-          <span className="jpb-move__k">FROM</span>
-          <span className="jpb-move__v">{from}</span>
-        </div>
-        <Icon name="arrow-right" className="jpb-move__arrow" />
-        <span className="jpb-sr-only"> to </span>
-        <div className="jpb-move__end is-to">
+        <div className="jpb-move__to">
           <span className="jpb-move__k">TO</span>
-          <span className="jpb-move__v">{to}</span>
+          <span className="jpb-move__big jpb-num">Table {toTableNumber}</span>
+          <span className="jpb-move__big jpb-num">Seat {toSeat + 1}</span>
         </div>
+        <p className="jpb-move__from">
+          <span className="jpb-move__k">FROM</span> <span className="jpb-num">{from}</span>
+        </p>
       </div>
       <p className="jpb-move__stack">
         Your stack <span className="jpb-num">{formatChips(stack)}</span>
       </p>
-      <Button ref={btn} variant="primary" size="xl" block onClick={onContinue} iconRight="arrow-right">
+      <Button variant="primary" size="xl" block onClick={onContinue} iconRight="arrow-right">
         Continue
       </Button>
     </section>
   );
+  return overlay ? <div className="jpb-overlay">{card}</div> : card;
 }

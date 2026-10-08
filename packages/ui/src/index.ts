@@ -11,6 +11,7 @@ export * from './hooks/useReducedMotion';
 export * from './hooks/useAnimatedNumber';
 export * from './hooks/useHaptics';
 export * from './hooks/useSound';
+export * from './hooks/useFocusTrap';
 
 export * from './components/Icon';
 export * from './components/Button';
@@ -44,8 +45,11 @@ export * from './components/ChampionOverlay';
 export * from './components/MilestoneBanner';
 export * from './components/Leaderboard';
 export * from './components/TournamentStatus';
+export * from './components/PlayerLayout';
 
 export * from './components/Modal';
+export * from './components/Menu';
+export * from './components/LiveAnnouncer';
 export * from './components/ConfirmDialog';
 export * from './components/Toast';
 export * from './components/DataTable';
@@ -54,3 +58,8 @@ export * from './components/Sparkline';
 export * from './components/TableTile';
 export * from './components/AdminShell';
 export * from './components/Admin';
+export * from './components/TableInspector';
+export * from './components/AlertQueue';
+export * from './components/CommandPalette';
+export * from './components/StructureEditor';
+export * from './components/PlayerDrawer';

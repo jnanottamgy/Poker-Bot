@@ -33,18 +33,23 @@
       .g-phones { display: flex; flex-wrap: wrap; gap: 32px; justify-content: center; align-items: flex-start; }
       .g-phones > .g-phone-frame { flex: 1 1 360px; max-width: 430px; }
       .g-ptop { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px; }
-      .g-brand { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
-      .g-brand i { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--jpb-accent); color: var(--jpb-accent-ink); font-style: normal; }
       .g-swatch { display: grid; gap: 6px; }
       .g-swatch span:first-child { height: 64px; border-radius: 12px; border: 1px solid var(--jpb-border-strong); }
       .g-swatch b { font-size: 13px; }
       .g-swatch code { color: var(--jpb-text-muted); font-size: 11px; }
       .g-admin-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); }
+      .g-admin-grid--even { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
+      .g-bigclock { width: 100%; }
+      .g-bigclock .jpb-blinds__time { font-size: var(--jpb-fs-2xl); }
+      .g-spark { margin: 0; display: grid; gap: 8px; color: var(--jpb-text-muted); font-size: clamp(14px, 1.1vw, 22px); }
+      .g-spark svg { width: 100%; height: auto; }
       .g-controls { display: grid; gap: 12px; }
       @media (max-width: 1100px) { .g-admin-grid { grid-template-columns: minmax(0, 1fr); } }
       .g-broadcast { padding: 32px; border-radius: 28px; background: #050506; border: 1px solid var(--jpb-border); display: grid; gap: 24px; }
       .g-broadcast-grid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
       @media (max-width: 900px) { .g-broadcast-grid { grid-template-columns: minmax(0,1fr); } }
+      .g-geom { display: flex; flex-wrap: wrap; gap: 28px 20px; align-items: flex-start; }
+      .g-geom__cell { flex: none; }
       .g-solo { padding: 0; }
       .g-solo .g-wrap { padding: 16px 12px 40px; }
       @media (max-width: 600px) { .g-wrap { padding: 20px 12px 60px; } .g-h2 { font-size: 24px; } .g-card { padding: 14px; } .g-phone-frame { padding: 0; border: 0; } }

@@ -288,16 +288,31 @@ describe('PokerTable geometry', () => {
 });
 
 describe('Notices', () => {
-  it('TableMoveCard shows 1-based seats and focuses Continue', () => {
+  it('TableMoveCard shows 1-based seats, the destination on its own lines, and focuses the heading', () => {
+    // Updated for the hierarchy fix: "Table 42" and "Seat 6" are separate large lines; focus starts on
+    // the heading (no focus ring drawn on Continue for touch users; screen readers read the notice first).
     const onContinue = vi.fn();
     render(<TableMoveCard fromTableNumber={37} fromSeat={3} toTableNumber={42} toSeat={5} stack={12_450} onContinue={onContinue} />);
-    expect(screen.getByText('TABLE 37 / SEAT 4')).toBeTruthy();
-    expect(screen.getByText('TABLE 42 / SEAT 6')).toBeTruthy();
+    expect(screen.getByText('Table 37 · Seat 4')).toBeTruthy();
+    expect(screen.getByText('Table 42')).toBeTruthy();
+    expect(screen.getByText('Seat 6')).toBeTruthy();
     expect(screen.getByText('12,450')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'You have been moved' }));
     const btn = screen.getByRole('button', { name: 'Continue' });
-    expect(document.activeElement).toBe(btn);
     fireEvent.click(btn);
     expect(onContinue).toHaveBeenCalled();
+  });
+  it('TableMoveCard as an overlay is modal: Esc continues and Tab stays inside', () => {
+    const onContinue = vi.fn();
+    render(<TableMoveCard overlay fromTableNumber={null} fromSeat={null} toTableNumber={3} toSeat={0} stack={500} onContinue={onContinue} />);
+    const dlg = screen.getByRole('alertdialog');
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    const btn = screen.getByRole('button', { name: 'Continue' });
+    btn.focus();
+    fireEvent.keyDown(btn, { key: 'Tab' });
+    expect(document.activeElement).toBe(btn);
+    fireEvent.keyDown(btn, { key: 'Escape' });
+    expect(onContinue).toHaveBeenCalledTimes(1);
   });
   it('EliminationCard shows finish, hands and prize', () => {
     render(<EliminationCard finishPosition={184} fieldSize={2000} handsPlayed={212} onWatch={vi.fn()} />);
@@ -308,6 +323,10 @@ describe('Notices', () => {
     cleanup();
     render(<EliminationCard finishPosition={57} handsPlayed={388} prizeMinor={2_450_000} onWatch={vi.fn()} />);
     expect(screen.getByText('₹24,500')).toBeTruthy();
+    // In the money is a milestone, not "YOU'RE OUT".
+    expect(screen.getByText('IN THE MONEY')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '57TH PLACE' })).toBeTruthy();
+    expect(screen.queryByText("YOU'RE OUT")).toBeNull();
   });
 });
 

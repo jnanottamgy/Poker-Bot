@@ -44,13 +44,14 @@ export function StatTile({ label, value, unit, delta, spark, sparkTone = 'info',
           {value}
           {unit && <span className="jpb-stat__unit">{unit}</span>}
         </span>
-        {spark && spark.length > 1 && <Sparkline data={spark} tone={sparkTone} width={88} height={30} />}
+        {spark && spark.length > 1 ? <Sparkline data={spark} tone={sparkTone} width={88} height={30} /> : <span className="jpb-stat__sparkslot" aria-hidden="true" />}
       </div>
       {(delta || hint) && (
         <div className="jpb-stat__foot">
           {delta && (
             <span className={cx('jpb-stat__delta', delta.direction === 'flat' ? 'is-flat' : good ? 'is-good' : 'is-bad')}>
               {delta.direction !== 'flat' && <Icon name={delta.direction === 'up' ? 'arrow-up' : 'arrow-down'} />}
+              <span className="jpb-sr-only">{delta.direction === 'up' ? 'Up ' : delta.direction === 'down' ? 'Down ' : 'No change '}</span>
               <span className="jpb-num">{delta.text}</span>
               {delta.context && <span className="jpb-stat__ctx">{delta.context}</span>}
             </span>

@@ -11,7 +11,7 @@ export interface ToastInput {
   title: ReactNode;
   description?: ReactNode;
   tone?: ToastTone;
-  /** ms before auto-dismiss; 0 = sticky. Default 5000 (danger defaults to sticky). */
+  /** ms before auto-dismiss; 0 = sticky. Default 5000; danger toasts and toasts with an action are sticky. The timer pauses on hover / focus. */
   durationMs?: number;
   action?: { label: string; onClick: () => void };
 }
@@ -41,14 +41,37 @@ export interface ToastProps extends ToastItem {
 
 /** A single toast (also usable standalone). Danger toasts use role="alert". */
 export function Toast({ id, title, description, tone = 'info', durationMs, action, onDismiss }: ToastProps) {
-  const ms = durationMs ?? (tone === 'danger' ? 0 : 5000);
+  // A toast with an action button must stay until the user can reach it (WCAG 2.2.1).
+  const ms = durationMs ?? (tone === 'danger' || action ? 0 : 5000);
+  const [paused, setPaused] = useState(false);
+  const left = useRef(ms);
+  const startedAt = useRef(0);
   useEffect(() => {
-    if (ms <= 0) return undefined;
-    const t = setTimeout(() => onDismiss(id), ms);
-    return () => clearTimeout(t);
-  }, [id, ms, onDismiss]);
+    left.current = ms;
+  }, [ms]);
+  useEffect(() => {
+    if (ms <= 0 || paused) return undefined;
+    startedAt.current = Date.now();
+    const t = setTimeout(() => onDismiss(id), Math.max(0, left.current));
+    return () => {
+      clearTimeout(t);
+      left.current -= Date.now() - startedAt.current;
+    };
+  }, [id, ms, paused, onDismiss]);
+  const hold = (): void => setPaused(true);
+  const release = (e?: { currentTarget: HTMLElement; relatedTarget: EventTarget | null }): void => {
+    if (e && e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+    setPaused(false);
+  };
   return (
-    <div className={cx('jpb-toast', `jpb-toast--${tone}`)} role={tone === 'danger' ? 'alert' : 'status'}>
+    <div
+      className={cx('jpb-toast', `jpb-toast--${tone}`)}
+      role={tone === 'danger' ? 'alert' : 'status'}
+      onMouseEnter={hold}
+      onMouseLeave={() => release()}
+      onFocus={hold}
+      onBlur={(e) => release(e)}
+    >
       <Icon name={TONE_ICON[tone]} className="jpb-toast__icon" />
       <div className="jpb-toast__body">
         <p className="jpb-toast__title">{title}</p>
@@ -66,7 +89,7 @@ export function Toast({ id, title, description, tone = 'info', durationMs, actio
           {action.label}
         </button>
       )}
-      <IconButton icon="x" label="Dismiss notification" size="sm" onClick={() => onDismiss(id)} />
+      <IconButton icon="x" label="Dismiss notification" size="md" className="jpb-toast__close" onClick={() => onDismiss(id)} />
     </div>
   );
 }

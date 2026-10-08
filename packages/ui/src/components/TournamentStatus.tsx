@@ -11,16 +11,21 @@ export const TOURNAMENT_STATUS_META: Readonly<Record<TStatus, { label: string; t
   REGISTRATION_CLOSED: { label: 'Registration closed', tone: 'neutral', icon: 'lock' },
   STARTING: { label: 'Starting', tone: 'info', icon: 'clock' },
   RUNNING: { label: 'Running', tone: 'positive', icon: 'play', live: true },
-  BREAK: { label: 'On break', tone: 'warning', icon: 'coffee' },
+  BREAK: { label: 'On break', tone: 'info', icon: 'coffee' },
   PAUSED: { label: 'Paused', tone: 'warning', icon: 'pause' },
   FINAL_TABLE: { label: 'Final table', tone: 'gold', icon: 'crown', live: true },
   COMPLETED: { label: 'Completed', tone: 'gold', icon: 'trophy' },
   CANCELLED: { label: 'Cancelled', tone: 'danger', icon: 'ban' },
 };
 
-export function TournamentStatusPill({ status, size = 'md' }: { status: TStatus; size?: 'sm' | 'md' }) {
+/**
+ * `quiet` (player app): a normal RUNNING state is a neutral pill where only the
+ * live dot is green; exceptions (break, paused, final table...) keep their tone.
+ */
+export function TournamentStatusPill({ status, size = 'md', quiet = false }: { status: TStatus; size?: 'sm' | 'md'; quiet?: boolean }) {
   const m = TOURNAMENT_STATUS_META[status];
-  return <StatusPill tone={m.tone} label={m.label} icon={m.icon} live={m.live} size={size} />;
+  const tone = quiet && m.tone === 'positive' ? 'neutral' : m.tone;
+  return <StatusPill tone={tone} label={m.label} icon={m.icon} live={m.live} size={size} className={quiet && m.live ? 'jpb-pill--quiet-live' : undefined} />;
 }
 
 export interface TournamentStatusProps {
@@ -32,7 +37,11 @@ export interface TournamentStatusProps {
   level: number;
   averageStack?: number;
   handForHand?: boolean;
+  /** Pre-formatted prize pool (headline stat). */
+  prizePool?: string;
   layout?: 'bar' | 'stacked';
+  /** Projector scale: numbers readable from the back of the room. */
+  size?: 'md' | 'broadcast';
   className?: string;
 }
 
@@ -46,11 +55,13 @@ export function TournamentStatus({
   level,
   averageStack,
   handForHand = false,
+  prizePool,
   layout = 'bar',
+  size = 'md',
   className,
 }: TournamentStatusProps) {
   return (
-    <section className={cx('jpb-tstatus', `jpb-tstatus--${layout}`, className)} aria-label="Tournament status">
+    <section className={cx('jpb-tstatus', `jpb-tstatus--${layout}`, `jpb-tstatus--${size}`, className)} aria-label="Tournament status">
       {name && <h2 className="jpb-tstatus__name">{name}</h2>}
       <div className="jpb-tstatus__pills">
         <TournamentStatusPill status={status} />
@@ -76,6 +87,12 @@ export function TournamentStatus({
           <div>
             <dt>Avg stack</dt>
             <dd className="jpb-num">{formatChips(averageStack)}</dd>
+          </div>
+        )}
+        {prizePool !== undefined && (
+          <div className="jpb-tstatus__prize">
+            <dt>Prize pool</dt>
+            <dd className="jpb-num">{prizePool}</dd>
           </div>
         )}
       </dl>

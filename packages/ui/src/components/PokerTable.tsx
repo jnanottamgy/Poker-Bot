@@ -23,37 +23,46 @@ export interface SeatPoint {
 export interface SeatGeometry {
   seat: SeatPoint;
   bet: SeatPoint;
+  /** Tall layout only: the pixel-anchored row the CSS uses for `top`. */
+  row?: 'T' | 'U' | 'L' | 'B';
 }
 
 /** Ellipse radii / centers (percent of the table box) for the wide layout. */
-const WIDE = { cx: 50, cy: 50, rx: 44, ry: 41, betKx: 0.64, betKy: 0.5 };
+const WIDE = { cx: 50, cy: 51, rx: 44, ry: 39, betKx: 0.64, betKy: 0.52 };
 
 /**
- * Tall (phone) layout: FIXED seat-box centres (percent of the table box) for
- * the k seats around the felt, clockwise from the hero's left. An even-angle
- * ellipse puts the left/right seats at the board's height, where an 86-92px
- * box covers the outer board cards on a 360px phone; these tables keep every
- * box clear of the board row (board centre at y = 46%) and of each other.
- * Verified by gallery/screenshot.mjs (bounding-box overlap check, 2-10 seats,
- * 328 / 358 / 398px).
+ * Tall (phone) layout rows. Seat boxes have a fixed pixel size while the table
+ * scales, so rows are anchored in PIXELS around the board instead of plain
+ * percentages (CSS: --row-t / --row-u / --row-l / --row-b):
+ *
+ *   T  top rail                 B  bottom rail
+ *   U  just above the board row L  just below the board row
+ *
+ * Nothing ever sits beside the board, so an 80-92px box can never cover a
+ * board card on a 320-400px phone. The numeric y below is only the nominal
+ * position (ordering, tests, non-CSS consumers).
  */
-const TALL_RING: Readonly<Record<number, ReadonlyArray<readonly [number, number]>>> = {
-  1: [[50, 10]],
-  2: [[20, 14], [80, 14]],
-  3: [[11, 66], [50, 10], [89, 66]],
-  4: [[11, 66], [24, 13], [76, 13], [89, 66]],
-  5: [[11, 68], [14, 26], [50, 10], [86, 26], [89, 68]],
-  6: [[11, 70], [13, 28], [35, 9], [65, 9], [87, 28], [89, 70]],
-  7: [[24, 88], [11, 66], [13, 27], [50, 9], [87, 27], [89, 66], [76, 88]],
-  8: [[22, 88], [10, 67], [12, 27], [36, 9], [64, 9], [88, 27], [90, 67], [78, 88]],
-  9: [[22, 89], [10, 68], [11, 31], [24, 10], [50, 7], [76, 10], [89, 31], [90, 68], [78, 89]],
+export type TallRow = 'T' | 'U' | 'L' | 'B';
+const ROW_Y: Readonly<Record<TallRow, number>> = { T: 10, U: 30, L: 64, B: 90 };
+
+/** k seats around the felt (the hero is in the dock), clockwise from the hero's left. */
+const TALL_RING: Readonly<Record<number, ReadonlyArray<readonly [number, TallRow]>>> = {
+  1: [[50, 'T']],
+  2: [[24, 'T'], [76, 'T']],
+  3: [[10, 'L'], [50, 'T'], [90, 'L']],
+  4: [[10, 'L'], [24, 'T'], [76, 'T'], [90, 'L']],
+  5: [[10, 'L'], [10, 'U'], [50, 'T'], [90, 'U'], [90, 'L']],
+  6: [[10, 'L'], [10, 'U'], [32, 'T'], [68, 'T'], [90, 'U'], [90, 'L']],
+  7: [[24, 'B'], [10, 'L'], [10, 'U'], [50, 'T'], [90, 'U'], [90, 'L'], [76, 'B']],
+  8: [[24, 'B'], [10, 'L'], [10, 'U'], [32, 'T'], [68, 'T'], [90, 'U'], [90, 'L'], [76, 'B']],
+  9: [[24, 'B'], [10, 'L'], [10, 'U'], [22, 'T'], [50, 'T'], [78, 'T'], [90, 'U'], [90, 'L'], [76, 'B']],
 };
 /** Hero (tall: rendered in the dock under the felt; the point only matters for ordering). */
 const TALL_HERO: SeatPoint = { x: 50, y: 97 };
 /** Spectator view (no dock): seat 0 sits on the bottom rail. */
 const TALL_ANCHOR: SeatPoint = { x: 50, y: 92 };
 /** Bet markers sit between the seat and the board. */
-const TALL_BOARD: SeatPoint = { x: 50, y: 46 };
+const TALL_BOARD: SeatPoint = { x: 50, y: 47 };
 const TALL_BET_K = 0.55;
 
 function point(c: { cx: number; cy: number; rx: number; ry: number }, deg: number, kx = 1, ky = kx): SeatPoint {
@@ -92,8 +101,14 @@ export function seatLayout(maxSeats: number, heroSeat: number, variant: 'wide' |
       continue;
     }
     const p = ring[k - 1];
-    const seat: SeatPoint = k === 0 ? (opts.spectator ? TALL_ANCHOR : TALL_HERO) : { x: p?.[0] ?? 50, y: p?.[1] ?? 10 };
-    out.push({ seat, bet: toward(seat, TALL_BOARD, TALL_BET_K) });
+    if (k === 0) {
+      const seat = opts.spectator ? TALL_ANCHOR : TALL_HERO;
+      out.push({ seat, bet: toward(seat, TALL_BOARD, TALL_BET_K), row: 'B' });
+      continue;
+    }
+    const row: TallRow = p?.[1] ?? 'T';
+    const seat: SeatPoint = { x: p?.[0] ?? 50, y: ROW_Y[row] };
+    out.push({ seat, bet: toward(seat, TALL_BOARD, TALL_BET_K), row });
   }
   return out;
 }
@@ -136,8 +151,8 @@ export interface PokerTableProps {
   className?: string;
 }
 
-function vars(p: SeatPoint): CSSProperties {
-  return { '--x': `${p.x}%`, '--y': `${p.y}%` } as CSSProperties;
+function vars(p: SeatPoint, row?: string): CSSProperties {
+  return { '--x': `${p.x}%`, '--y': row ? `var(--row-${row.toLowerCase()}, ${p.y}%)` : `${p.y}%` } as CSSProperties;
 }
 
 /** Felt marker amount: exact below 1,000,000 (the seat box shows only the verb), compact above. */
@@ -247,15 +262,16 @@ export function PokerTable({
           const isHero = i === heroSeat;
           if (!s) {
             return (
-              <div key={`empty-${i}`} className="jpb-table__slot jpb-table__empty" style={vars(g.seat)}>
+              <div key={`empty-${i}`} className="jpb-table__slot jpb-table__empty" style={vars(g.seat, layout === 'tall' ? g.row : undefined)}>
                 <span aria-hidden="true">{i + 1}</span>
                 <span className="jpb-sr-only">Seat {i + 1} empty</span>
               </div>
             );
           }
           const acting = actingSeat === i;
+          const faceUp = s.inHand !== false && (s.shownCards ?? (isHero ? s.holeCards : null) ?? null) !== null;
           return (
-            <div key={`seat-${i}`} className={cx('jpb-table__slot', isHero && 'is-hero-slot', isHero && showDock && 'is-docked')} style={vars(g.seat)} data-seat={i}>
+            <div key={`seat-${i}`} className={cx('jpb-table__slot', isHero && 'is-hero-slot', isHero && showDock && 'is-docked', faceUp && 'has-shown', g.seat.x > 55 && 'is-east')} style={vars(g.seat, layout === 'tall' ? g.row : undefined)} data-seat={i}>
               <PlayerSeat
                 {...s}
                 seat={i}

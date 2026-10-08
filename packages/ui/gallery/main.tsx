@@ -5,6 +5,16 @@ import type { CardCode, LegalActions, TournamentStatus as TStatus } from '@jpb/s
 import '../src/styles.css';
 import {
   ActionPanel,
+  AlertQueue,
+  BlindStructureEditor,
+  CommandPalette,
+  LiveAnnouncerProvider,
+  Menu,
+  PayoutEditor,
+  PlayerDrawer,
+  PlayerHeader,
+  PlayerLayout,
+  TableInspector,
   ActionTimer,
   ActivityFeed,
   AdminShell,
@@ -18,7 +28,6 @@ import {
   ConnectionBanner,
   ControlCard,
   DataTable,
-  DescriptionList,
   EliminationCard,
   EmptyState,
   ErrorState,
@@ -28,7 +37,6 @@ import {
   Kbd,
   Leaderboard,
   MilestoneBanner,
-  Modal,
   Panel,
   PlayerSeat,
   PlayingCard,
@@ -55,7 +63,8 @@ import {
   formatChips,
   formatMoneyMinor,
 } from '../src';
-import type { ActivityEntry, Column, LeaderboardRow, NavItem, TableSeat, TableTileData, TableTileStatus } from '../src';
+import type { ActivityEntry, BlindRow, Column, Command, InspectorSeat, LeaderboardRow, NavItem, PayoutRow, QueueAlert, TableSeat, TableTileData, TableTileStatus } from '../src';
+import { GEOMETRY_SEATS, GEOMETRY_WIDTHS, busySeats } from './geometry';
 
 /* ------------------------------------------------------------ fixtures -- */
 
@@ -183,7 +192,7 @@ interface PlayerRow {
   timeouts: number;
 }
 
-const PLAYERS: PlayerRow[] = Array.from({ length: 12 }, (_, i) => ({
+const PLAYERS: PlayerRow[] = Array.from({ length: 14 }, (_, i) => ({
   id: `p${i}`,
   name: NAMES[i % NAMES.length] ?? 'Player',
   publicId: `JPN-${(4096 + i * 977).toString(16).toUpperCase().slice(-4)}`,
@@ -196,7 +205,8 @@ const PLAYERS: PlayerRow[] = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 const PLAYER_STATUS_PILL: Record<PlayerRow['status'], ReactNode> = {
-  SEATED: <StatusPill size="sm" tone="positive" label="Seated" />,
+  // Normal state: plain text, no pill. Colour is reserved for exceptions.
+  SEATED: <span style={{ color: 'var(--jpb-text-2)' }}>Seated</span>,
   IN_TRANSIT: <StatusPill size="sm" tone="info" icon="move" label="In transit" />,
   ELIMINATED: <StatusPill size="sm" tone="neutral" icon="x-circle" label="Eliminated" />,
   SUSPENDED: <StatusPill size="sm" tone="warning" icon="pause" label="Suspended" />,
@@ -240,25 +250,21 @@ function Swatch({ name, token }: { name: string; token: string }) {
 
 function PhoneHeader({ status = 'RUNNING' as TStatus, left = 184 }) {
   return (
-    <>
-      <div className="g-ptop">
-        <span className="g-brand">
-          <i>♠</i> Spring Showdown
-        </span>
-        <span className="g-row" style={{ gap: 8 }}>
-          <TournamentStatusPill status={status} size="sm" />
-          <IconButton icon="volume-off" label="Sound off" size="sm" />
-        </span>
-      </div>
-      <BlindClock
-        variant="compact"
-        current={{ level: 14, smallBlind: 400, bigBlind: 800, ante: 800 }}
-        next={{ level: 15, smallBlind: 500, bigBlind: 1000, ante: 1000 }}
-        levelEndsAt={NOW + 271_000}
-        serverOffsetMs={0}
-      />
-      <p className="jpb-sr-only">{left} players left</p>
-    </>
+    <PlayerHeader
+      tournamentName="Spring Showdown"
+      status={status}
+      playersLeft={left}
+      end={<IconButton icon="volume-off" label="Sound off" size="md" />}
+      clock={
+        <BlindClock
+          variant="compact"
+          current={{ level: 14, smallBlind: 400, bigBlind: 800, ante: 800 }}
+          next={{ level: 15, smallBlind: 500, bigBlind: 1000, ante: 1000 }}
+          levelEndsAt={NOW + 271_000}
+          serverOffsetMs={0}
+        />
+      }
+    />
   );
 }
 
@@ -552,8 +558,54 @@ function MobilePlayerSection() {
             <ActionPanel legal={null} bigBlind={800} onAction={noop} />
           </div>
         </div>
+        <div className="g-phone-frame">
+          <div className="g-phone">
+            <PhoneHeader status="FINAL_TABLE" left={9} />
+            <PokerTable
+              maxSeats={10}
+              seats={SHOWDOWN_SEATS}
+              heroSeat={4}
+              board={['Kd', 'Qh', '9h', '8s', '4c']}
+              totalPot={48150}
+              pots={[{ amount: 30150 }, { amount: 18000 }]}
+              winningCards={['Kd', 'Qh', 'Jh', 'Th', '9h']}
+              tableNumber={1}
+              handNumber={1291}
+              bigBlind={800}
+              finalTable
+            />
+            <ActionPanel legal={null} bigBlind={800} onAction={noop} />
+          </div>
+        </div>
       </div>
     </Section>
+  );
+}
+
+/** The real phone screen, laid out by height (screenshot: 390 x 664). */
+function FitPage() {
+  return (
+    <LiveAnnouncerProvider>
+      <PlayerLayout
+        header={<PhoneHeader />}
+        actions={<ActionPanel legal={FACING_BET} bigBlind={800} onAction={noop} />}
+      >
+        <PokerTable
+          maxSeats={9}
+          seats={MOBILE_SEATS}
+          heroSeat={4}
+          board={['Qh', 'Jd', '4h']}
+          totalPot={9200}
+          actingSeat={4}
+          actionDeadline={NOW + 14_000}
+          timerMs={20_000}
+          tableNumber={42}
+          handNumber={1284}
+          bigBlind={800}
+          dockCardSize="md"
+        />
+      </PlayerLayout>
+    </LiveAnnouncerProvider>
   );
 }
 
@@ -584,6 +636,14 @@ function ActionsSection() {
         <div data-testid="sizer-host">
           <p className="g-label">Sizer (tap RAISE)</p>
           <ActionPanel legal={FACING_BET} bigBlind={800} onAction={noop} keyboardShortcuts={false} />
+        </div>
+        <div data-testid="confirm-host">
+          <p className="g-label">All-in confirmation (tap ALL-IN)</p>
+          <ActionPanel legal={ALL_IN_ONLY} bigBlind={800} onAction={noop} keyboardShortcuts={false} confirmAllIn />
+        </div>
+        <div>
+          <p className="g-label">Not your turn (same footprint)</p>
+          <ActionPanel legal={null} bigBlind={800} onAction={noop} />
         </div>
       </div>
     </Section>
@@ -661,6 +721,14 @@ function DesktopTableSection() {
           />
         </div>
       </div>
+      <H3>Phone layout — 2, 6 and 10 seats (variant="tall")</H3>
+      <div className="g-phones">
+        {[2, 6, 10].map((n) => (
+          <div key={n} className="g-phone-frame" style={{ maxWidth: 398 }}>
+            <PokerTable variant="tall" maxSeats={n} seats={busySeats(n, 0)} heroSeat={0} board={['Qh', 'Jd', '4h']} totalPot={21_400} actingSeat={2 % n} actionDeadline={NOW + 11_000} timerMs={20_000} tableNumber={n} handNumber={88} bigBlind={800} />
+          </div>
+        ))}
+      </div>
     </Section>
   );
 }
@@ -693,6 +761,12 @@ function FinalTableSection() {
             finalTable
           />
         </div>
+        <H3>Final table on a phone (gold rail)</H3>
+        <div className="g-phones">
+          <div className="g-phone-frame" style={{ maxWidth: 398 }}>
+            <PokerTable variant="tall" maxSeats={9} seats={FINAL_TABLE} heroSeat={7} board={['Ac', '7d', '7s']} totalPot={325_000} actingSeat={4} actionDeadline={NOW + 22_000} timerMs={30_000} tableNumber={1} handNumber={2088} bigBlind={50_000} finalTable />
+          </div>
+        </div>
         <div className="g-grid g-grid--2">
           <Leaderboard
             mode="stack"
@@ -721,20 +795,91 @@ const NAV: NavItem[] = [
   { id: 'fairness', label: 'Fairness', icon: 'shield', group: 'Integrity' },
   { id: 'audit', label: 'Audit log', icon: 'file', group: 'Integrity' },
   { id: 'hands', label: 'Hand history', icon: 'list', group: 'Integrity' },
-  { id: 'payouts', label: 'Payouts', icon: 'award', group: 'Setup' },
+  { id: 'structure', label: 'Structure & payouts', icon: 'award', group: 'Setup' },
   { id: 'announce', label: 'Announcements', icon: 'message', group: 'Setup' },
   { id: 'staff', label: 'Staff & roles', icon: 'key', group: 'Setup' },
   { id: 'sim', label: 'Simulation', icon: 'activity', group: 'Setup' },
   { id: 'settings', label: 'Settings', icon: 'sliders', group: 'Setup' },
 ];
 
+const ALERTS: QueueAlert[] = [
+  { id: 'al1', severity: 'critical', code: 'STALLED_TABLE', title: 'Table 37 stalled — no hand progress', source: 'Table 37', detail: 'Seat 4 (Marcus Hale) disconnected mid-decision; timer did not fire.', raisedAt: NOW - 92_000, state: 'open', owner: null },
+  { id: 'al2', severity: 'critical', code: 'STATE_DESYNC', title: 'Node gs-3 version gap on 2 tables', source: 'gs-3', raisedAt: NOW - 41_000, state: 'open', owner: 'Karan' },
+  { id: 'al3', severity: 'warning', code: 'SLOW_TABLE', title: 'Table 12 averaging 41s per hand', source: 'Table 12', raisedAt: NOW - 260_000, state: 'open', owner: null },
+  { id: 'al4', severity: 'info', code: 'LATE_REG_CLOSING', title: 'Late registration closes in 5 minutes', raisedAt: NOW - 30_000, state: 'acked', owner: 'Meera' },
+];
+
+const STAFF = [
+  { id: 's1', name: 'Meera Iyer (TD)' },
+  { id: 's2', name: 'Karan Shah (floor)' },
+  { id: 's3', name: 'Ana Ruiz (floor)' },
+];
+
+const INSPECT_SEATS: Array<InspectorSeat | null> = [
+  { playerId: 'p1', name: 'Arjun Mehta', stack: 48_200, privateCards: ['9c', '9d'], lastAction: { action: 'CALL', amount: 1200, toAmount: 1200 }, bet: 1200 },
+  { playerId: 'p2', name: 'Sofia Lind', stack: 23_950, isButton: true, privateCards: ['Ah', 'Qh'], lastAction: { action: 'RAISE', amount: 3600, toAmount: 4800 }, bet: 4800 },
+  { playerId: 'p3', name: 'Kenji Watanabe', stack: 112_400, isSmallBlind: true, folded: true },
+  { playerId: 'p4', name: 'Priya Raman', stack: 8750, isBigBlind: true, folded: true },
+  { playerId: 'p5', name: 'Marcus Hale', stack: 56_100, connected: false, privateCards: ['Kc', 'Js'] },
+  { playerId: 'p6', name: 'Lena Fischer', stack: 19_800, folded: true, away: true, sittingOut: true },
+  null,
+  { playerId: 'p8', name: 'Diego Alvarez', stack: 74_300, folded: true },
+  { playerId: 'p9', name: 'Wei Zhang', stack: 88_000, folded: true },
+];
+
+const BLINDS: BlindRow[] = [
+  { key: 'l12', smallBlind: 250, bigBlind: 500, ante: 500, durationMin: 20 },
+  { key: 'l13', smallBlind: 300, bigBlind: 600, ante: 600, durationMin: 20 },
+  { key: 'l14', smallBlind: 400, bigBlind: 800, ante: 800, durationMin: 20 },
+  { key: 'br', isBreak: true, smallBlind: 0, bigBlind: 0, ante: 0, durationMin: 10 },
+  { key: 'l15', smallBlind: 500, bigBlind: 1000, ante: 1000, durationMin: 20 },
+  { key: 'l16', smallBlind: 600, bigBlind: 900, ante: 1200, durationMin: 20 },
+];
+
+const PAYOUTS: PayoutRow[] = [
+  { key: 'p1', fromPlace: 1, toPlace: 1, bpEach: 2500 },
+  { key: 'p2', fromPlace: 2, toPlace: 2, bpEach: 1600 },
+  { key: 'p3', fromPlace: 3, toPlace: 3, bpEach: 1050 },
+  { key: 'p4', fromPlace: 4, toPlace: 9, bpEach: 600 },
+  { key: 'p5', fromPlace: 10, toPlace: 18, bpEach: 150 },
+];
+
+let keySeq = 100;
+const nextKey = (): string => `k${keySeq++}`;
+
+function directorCommands(open: (what: string) => void): Command[] {
+  return [
+    { id: 'pause', label: 'Pause tournament after this hand', group: 'Tournament', icon: 'pause', shortcut: '⇧P', run: () => open('pause') },
+    { id: 'break', label: 'Start break', group: 'Tournament', icon: 'coffee', shortcut: '⇧B', run: () => open('break') },
+    { id: 'h4h', label: 'Toggle hand-for-hand', group: 'Tournament', icon: 'pause', shortcut: '⇧H', run: () => open('h4h') },
+    { id: 'clock+', label: 'Add 1 minute to the level', group: 'Clock', icon: 'plus', shortcut: ']', run: () => open('clock+') },
+    { id: 'clock-', label: 'Remove 1 minute from the level', group: 'Clock', icon: 'minus', shortcut: '[', run: () => open('clock-') },
+    { id: 'next', label: 'Advance to next level', group: 'Clock', icon: 'skip-forward', shortcut: '⇧N', danger: true, run: () => open('next') },
+    { id: 'table', label: 'Open table…', group: 'Tables', icon: 'layers', shortcut: 'T', keywords: ['inspect', 'goto'], run: () => open('table') },
+    { id: 'rebalance', label: 'Rebalance tables now', group: 'Tables', icon: 'refresh', run: () => open('rebalance') },
+    { id: 'break-table', label: 'Break a table…', group: 'Tables', icon: 'split', danger: true, run: () => open('break-table') },
+    { id: 'find', label: 'Find player…', group: 'Players', icon: 'search', shortcut: '/', keywords: ['search'], run: () => open('find') },
+    { id: 'adjust', label: 'Adjust a stack…', group: 'Players', icon: 'sliders', danger: true, keywords: ['chips'], disabledReason: 'Requires STACK_ADJUST', run: () => open('adjust') },
+    { id: 'announce', label: 'Announce to all players', group: 'Communication', icon: 'message', shortcut: 'A', run: () => open('announce') },
+    { id: 'alerts', label: 'Go to alerts', group: 'Integrity', icon: 'bell', shortcut: 'G A', run: () => open('alerts') },
+    { id: 'audit', label: 'Export audit log', group: 'Integrity', icon: 'download', run: () => open('audit') },
+    { id: 'freeze', label: 'Emergency freeze', group: 'Emergency', icon: 'freeze', danger: true, shortcut: '⇧⌘F', run: () => open('freeze') },
+    { id: 'cancel', label: 'Cancel tournament', group: 'Emergency', icon: 'ban', danger: true, run: () => open('cancel') },
+  ];
+}
+
 function AdminSection() {
   const tables = useMemo(() => makeTables(160), []);
   const [selected, setSelected] = useState<string | null>('t37');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
   const [tab, setTab] = useState('all');
   const [q, setQ] = useState('');
   const [h4h, setH4h] = useState(true);
+  const [checked, setChecked] = useState<string[]>(['p2', 'p5', 'p11']);
+  const [palette, setPalette] = useState(false);
+  const [blinds, setBlinds] = useState(BLINDS);
+  const [payouts, setPayouts] = useState(PAYOUTS);
   const columns: Column<PlayerRow>[] = [
     {
       key: 'name',
@@ -755,9 +900,7 @@ function AdminSection() {
       header: 'Connection',
       render: (r) =>
         r.connected ? (
-          <span style={{ color: 'var(--jpb-text-2)' }}>
-            <Icon name="wifi" /> Online
-          </span>
+          <span style={{ color: 'var(--jpb-text-2)' }}>Online</span>
         ) : (
           <span style={{ color: 'var(--jpb-danger)' }}>
             <Icon name="wifi-off" /> Offline{r.timeouts ? ` · ${r.timeouts} timeouts` : ''}
@@ -772,21 +915,24 @@ function AdminSection() {
         activeId="overview"
         onNavigate={noop}
         title="Spring Showdown 2026 — Control room"
-        subtitle="T-7F3A · Director view · Level 14 · 400 / 800 (ante 800)"
+        subtitle="T-7F3A · Director view"
+        clock={<BlindClock variant="bar" current={{ level: 14, smallBlind: 400, bigBlind: 800, ante: 800 }} levelEndsAt={NOW + 271_000} serverOffsetMs={0} />}
         status={
           <>
             <TournamentStatusPill status="RUNNING" />
             <StatusPill tone="warning" icon="pause" label="Hand-for-hand" />
-            <StatusPill tone="positive" icon="wifi" label="All nodes healthy" />
           </>
         }
         actions={
           <>
+            <Button size="sm" variant="ghost" icon="search" onClick={() => setPalette(true)} aria-keyshortcuts="Control+K Meta+K">
+              Commands <Kbd>⌘K</Kbd>
+            </Button>
             <Button size="sm" icon="message">
               Announce
             </Button>
-            <Button size="sm" variant="danger" icon="freeze">
-              Freeze
+            <Button size="sm" variant="danger-outline" icon="freeze">
+              Freeze…
             </Button>
           </>
         }
@@ -801,7 +947,7 @@ function AdminSection() {
                 <Button size="sm" onClick={() => setSelected('t37')}>
                   Open table
                 </Button>
-                <Button size="sm" variant="danger">
+                <Button size="sm" variant="danger-outline">
                   Force timeout
                 </Button>
               </>
@@ -810,19 +956,20 @@ function AdminSection() {
         }
       >
         <div className="g-stack" style={{ gap: 16 }}>
-          <div className="g-grid g-grid--kpi">
+          <div className="jpb-kpis">
             <StatTile label="Players left" icon="users" value="1,204" unit="/ 2,000" delta={{ text: '-38', direction: 'down', good: true, context: 'last 10 min' }} spark={[2000, 1900, 1760, 1600, 1480, 1390, 1300, 1242, 1204]} sparkTone="info" />
             <StatTile label="Active tables" icon="layers" value="136" delta={{ text: '-4', direction: 'down', good: true, context: 'broken' }} spark={[223, 210, 190, 176, 160, 150, 141, 140, 136]} />
-            <StatTile label="Average stack" icon="activity" value="49,834" unit="62 BB" delta={{ text: '+1.6K', direction: 'up' }} />
+            <StatTile label="Average stack" icon="activity" value="49,834" unit="62 BB" delta={{ text: '+1,604', direction: 'up' }} />
             <StatTile label="Hands / min" icon="zap" value="412" delta={{ text: '-6%', direction: 'down', good: false, context: 'vs 1h avg' }} spark={[440, 452, 438, 446, 431, 425, 419, 412]} sparkTone="warning" />
-            <StatTile label="Largest pot" icon="trophy" value="1.2M" hint="T12 · hand #1291" />
-            <StatTile label="Open alerts" icon="bell" value="3" tone="danger" delta={{ text: '1 critical', direction: 'flat' }} />
+            <StatTile label="Largest pot" icon="trophy" value="1,204,500" hint="T12 · hand #1291" />
+            <StatTile label="Open alerts" icon="bell" value="3" tone="danger" delta={{ text: '2 critical', direction: 'flat' }} />
           </div>
           <div className="g-admin-grid">
             <Panel
+              fill
               title="Table map"
               icon="grid"
-              description="136 active · windowed grid (only visible rows are rendered)"
+              description="136 active · tap a status to filter · windowed (only visible rows render)"
               actions={
                 <>
                   <Button size="sm" icon="refresh">
@@ -834,7 +981,7 @@ function AdminSection() {
                 </>
               }
             >
-              <TableMap tables={tables} selectedId={selected} onSelect={setSelected} height={720} />
+              <TableMap tables={tables} selectedId={selected} onSelect={setSelected} height={900} />
             </Panel>
             <div className="g-controls">
               <ControlCard title="Tournament" icon="play" description="Lifecycle and pauses" state="Running · started 18:00 · 3h 14m elapsed">
@@ -848,7 +995,10 @@ function AdminSection() {
                   Close late reg
                 </Button>
               </ControlCard>
-              <ControlCard title="Blind clock" icon="clock" state="Level 14 · 04:31 left · next 500 / 1,000">
+              <ControlCard title="Blind clock" icon="clock" state="Level 14 · next 500 / 1,000 (1,000)">
+                <div className="g-bigclock">
+                  <BlindClock variant="bar" current={{ level: 14, smallBlind: 400, bigBlind: 800, ante: 800 }} levelEndsAt={NOW + 271_000} serverOffsetMs={0} className="g-bigclock__clock" />
+                </div>
                 <Button size="sm" icon="minus">
                   1 min
                 </Button>
@@ -856,7 +1006,7 @@ function AdminSection() {
                   1 min
                 </Button>
                 <Button size="sm" icon="skip-forward">
-                  Next level
+                  Next level…
                 </Button>
                 <Button size="sm" variant="ghost">
                   Set level…
@@ -864,8 +1014,11 @@ function AdminSection() {
               </ControlCard>
               <ControlCard title="Tables" icon="layers" state="136 tables · max imbalance 2 · 7 players in transit">
                 <Toggle checked={h4h} onChange={setH4h} label="Hand-for-hand" description="All tables start hands together" />
-                <Button size="sm" variant="danger" icon="split">
-                  Break table 37
+                <Button size="sm" icon="split">
+                  Break table 37…
+                </Button>
+                <Button size="sm" variant="ghost" icon="move">
+                  Move player…
                 </Button>
               </ControlCard>
               <ControlCard title="Stack adjustment" icon="sliders" description="Correct a verified chip error" lockedPermission="STACK_ADJUST">
@@ -875,19 +1028,42 @@ function AdminSection() {
                 <Button size="sm" variant="danger" icon="freeze">
                   Emergency freeze
                 </Button>
-                <Button size="sm" variant="ghost" icon="ban">
-                  Cancel tournament
+                <Button size="sm" variant="danger-outline" icon="ban">
+                  Cancel tournament…
                 </Button>
               </ControlCard>
             </div>
           </div>
           <div className="g-admin-grid">
-            <Panel
-              title="Players"
-              icon="users"
-              flush
-              actions={<SearchInput value={q} onChange={setQ} label="Search players" placeholder="Name, JPN id, table…" />}
-            >
+            <Panel title="Table 37 — live" icon="layers" description="Seat menus: open, message, move, adjust, sit out / in, force timeout, eliminate">
+              <TableInspector
+                tableNumber={37}
+                status="STALLED"
+                maxSeats={9}
+                seats={INSPECT_SEATS}
+                board={['Qh', 'Jd', '4h']}
+                totalPot={14_700}
+                handNumber={212}
+                actingSeat={4}
+                actionDeadline={NOW - 1000}
+                timerMs={20_000}
+                revealed
+                locked={{ eliminate: 'PLAYER_ELIMINATE' }}
+                details={[
+                  { label: 'Last hand', value: '92s ago' },
+                  { label: 'Dealer', value: 'Seat 2' },
+                  { label: 'Node', value: 'gs-3', mono: true },
+                ]}
+                onSeatAction={noop}
+                onTableAction={noop}
+              />
+            </Panel>
+            <Panel title="Alert queue" icon="bell" description="Ack, assign or snooze. Critical first, then oldest.">
+              <AlertQueue alerts={ALERTS} now={NOW} staff={STAFF} onAck={noop} onAssign={noop} onSnooze={noop} onOpen={noop} />
+            </Panel>
+          </div>
+          <div className="g-admin-grid">
+            <Panel title="Players" icon="users" flush actions={<SearchInput value={q} onChange={setQ} label="Search players" placeholder="Name, JPN id, table…" />}>
               <div style={{ padding: '0 16px' }}>
                 <Tabs
                   label="Player status"
@@ -907,9 +1083,36 @@ function AdminSection() {
                 columns={columns}
                 rows={PLAYERS}
                 rowKey={(r) => r.id}
+                rowLabel={(r) => r.name}
                 onRowActivate={noop}
                 selectedKey="p5"
-                pagination={{ page, pageSize: 12, total: 2000, onPageChange: setPage }}
+                checkedKeys={checked}
+                onCheckedChange={setChecked}
+                bulkActions={() => (
+                  <>
+                    <Button size="sm" icon="move">
+                      Move…
+                    </Button>
+                    <Button size="sm" icon="message">
+                      Message
+                    </Button>
+                    <Button size="sm" icon="pause">
+                      Sit out
+                    </Button>
+                    <Button size="sm" variant="danger-outline" icon="ban">
+                      Disqualify…
+                    </Button>
+                  </>
+                )}
+                rowActions={(r) => [
+                  { id: 'open', label: 'Open player', icon: 'user', onSelect: noop },
+                  { id: 'msg', label: 'Message', icon: 'message', onSelect: noop },
+                  { id: 'move', label: 'Move…', icon: 'move', onSelect: noop, disabled: r.status === 'ELIMINATED', disabledReason: 'Player is eliminated' },
+                  { id: 'adj', label: 'Adjust stack…', icon: 'sliders', onSelect: noop, disabled: true, disabledReason: 'Requires STACK_ADJUST' },
+                  'separator',
+                  { id: 'dq', label: 'Disqualify…', icon: 'ban', danger: true, onSelect: noop },
+                ]}
+                pagination={{ page, pageSize, total: 2000, onPageChange: setPage, pageSizeOptions: [25, 50, 100, 200], onPageSizeChange: setPageSize }}
                 density="compact"
               />
             </Panel>
@@ -917,9 +1120,27 @@ function AdminSection() {
               <ActivityFeed entries={AUDIT} label="Recent audit events" />
             </Panel>
           </div>
+          <div className="g-admin-grid g-admin-grid--even">
+            <Panel title="Blind structure" icon="clock" description="Levels already played are locked. Every row is validated before it can be saved." actions={<Button size="sm" variant="primary" disabled>Save structure</Button>}>
+              <BlindStructureEditor rows={blinds} onChange={setBlinds} currentLevel={3} newKey={nextKey} />
+            </Panel>
+            <Panel title="Payouts" icon="award" description="Per-place share in hundredths of a percent; must total exactly 100.00%.">
+              <PayoutEditor rows={payouts} onChange={setPayouts} prizePoolMinor={200_000_000} formatMoney={(m) => formatMoneyMinor(m, 'INR')} paidPlaces={18} newKey={nextKey} />
+            </Panel>
+          </div>
         </div>
       </AdminShell>
+      <CommandPalette open={palette} onClose={() => setPalette(false)} commands={directorCommands(noop)} />
     </section>
+  );
+}
+
+/** Command palette, open (screenshot). */
+function PaletteSection() {
+  return (
+    <Section id="palette" eyebrow="Admin" title="Command palette" lede="⌘K lists every director action with its key hint. Destructive commands open their confirmation; locked ones say which permission is missing.">
+      <CommandPalette open onClose={noop} commands={directorCommands(noop)} />
+    </Section>
   );
 }
 
@@ -942,52 +1163,33 @@ function DialogsSection() {
           onConfirm={noop}
           onCancel={noop}
         />
-        <Modal
+        <PlayerDrawer
           inline
           open
-          placement="right"
           onClose={noop}
-          title="Sofia Lind"
-          description="JPN-7A42 · Seated · Table 12, seat 2"
-          footer={
-            <>
-              <Button size="sm" icon="move">
-                Move player
-              </Button>
-              <Button size="sm" icon="pause">
-                Suspend
-              </Button>
-              <Button size="sm" variant="danger" icon="ban">
-                Disqualify…
-              </Button>
-            </>
-          }
+          onAction={noop}
+          locked={{ disqualify: 'PLAYER_DISQUALIFY' }}
+          player={{ name: 'Sofia Lind', publicId: 'JPN-7A42', status: 'SEATED', connected: true, stack: 23_950, bigBlind: 800, tableNumber: 12, seat: 1, consecutiveTimeouts: 1 }}
+          details={[
+            { label: 'Registered', value: '17:42:10' },
+            { label: 'Hands played', value: '212' },
+            { label: 'Hands since BB', value: '3' },
+            { label: 'Device', value: 'iPhone · Safari' },
+            { label: 'Session', value: 'sess_91fa…c02', mono: true },
+          ]}
         >
-          <div className="g-stack">
-            <div className="g-row">
-              <StatusPill tone="positive" label="Seated" />
-              <StatusPill tone="positive" icon="wifi" label="Online" />
-              <StackDisplay amount={23950} label="Stack" size="md" bigBlind={800} />
-            </div>
-            <DescriptionList
-              items={[
-                { label: 'Registered', value: '17:42:10' },
-                { label: 'Hands played', value: '212' },
-                { label: 'Timeouts', value: '0 consecutive' },
-                { label: 'Hands since BB', value: '3' },
-                { label: 'Device', value: 'iPhone · Safari' },
-                { label: 'Session', value: 'sess_91fa…c02', mono: true },
-              ]}
-            />
-            <Tabs label="Player detail" value="hands" onChange={noop} tabs={[{ id: 'hands', label: 'Hands' }, { id: 'moves', label: 'Moves', count: 2 }, { id: 'audit', label: 'Audit', count: 1 }]} />
-            <ActivityFeed entries={AUDIT.slice(4, 6)} />
-          </div>
-        </Modal>
+          <Tabs label="Player detail" value="hands" onChange={noop} tabs={[{ id: 'hands', label: 'Hands' }, { id: 'moves', label: 'Moves', count: 2 }, { id: 'audit', label: 'Audit', count: 1 }]} />
+          <ActivityFeed entries={AUDIT.slice(4, 6)} />
+        </PlayerDrawer>
+      </div>
+      <H3>Menus</H3>
+      <div className="g-row" style={{ minHeight: 60 }}>
+        <Menu label="Actions for Sofia Lind" triggerText="Row menu" items={[{ id: 'a', label: 'Open player', icon: 'user', onSelect: noop }, { id: 'b', label: 'Adjust stack…', icon: 'sliders', disabled: true, disabledReason: 'Requires STACK_ADJUST', onSelect: noop }, 'separator', { id: 'c', label: 'Disqualify…', icon: 'ban', danger: true, onSelect: noop }]} align="start" />
       </div>
       <H3>Toasts</H3>
       <div className="g-stack" style={{ maxWidth: 420 }}>
         <Toast id={1} tone="success" title="Break started" description="All tables held. Resumes at 21:30." onDismiss={noop} durationMs={0} />
-        <Toast id={2} tone="warning" title="7 players in transit" description="Moves complete when their current hands end." onDismiss={noop} durationMs={0} action={{ label: 'View', onClick: noop }} />
+        <Toast id={2} tone="warning" title="7 players in transit" description="Moves complete when their current hands end." onDismiss={noop} action={{ label: 'View', onClick: noop }} />
         <Toast id={3} tone="danger" title="Action rejected: STALE_STATE_VERSION" description="The table moved on. Your screen has been refreshed." onDismiss={noop} />
         <Toast id={4} tone="gold" title="Final table formed" description="Table 1 · 9 players" onDismiss={noop} durationMs={0} />
       </div>
@@ -996,30 +1198,76 @@ function DialogsSection() {
 }
 
 function BroadcastSection() {
+  const top: LeaderboardRow[] = [
+    { id: '1', rank: 1, name: 'Diego Alvarez', stack: 1_480_000 },
+    { id: '2', rank: 2, name: 'Kenji Watanabe', stack: 1_210_500 },
+    { id: '3', rank: 3, name: 'Wei Zhang', stack: 998_400 },
+    { id: '4', rank: 4, name: 'Ravi Kapoor', stack: 912_000 },
+    { id: '5', rank: 5, name: 'Theo Martins', stack: 880_250, tied: true },
+    { id: '6', rank: 5, name: 'Sofia Lind', stack: 880_250, tied: true },
+    { id: '7', rank: 7, name: 'Mila Novak', stack: 812_900 },
+    { id: '8', rank: 8, name: 'Hannah Okafor', stack: 774_100 },
+    { id: '9', rank: 9, name: 'Ava Brooks', stack: 706_300 },
+  ];
   return (
     <Section id="broadcast" eyebrow="Projector" title="Broadcast display" lede="Readable from the back of the room.">
       <div className="g-broadcast">
-        <TournamentStatus name="Spring Showdown 2026" status="RUNNING" playersRemaining={184} playersTotal={2000} tables={21} level={14} averageStack={326_087} handForHand />
+        <TournamentStatus size="broadcast" name="Spring Showdown 2026" status="RUNNING" playersRemaining={184} playersTotal={2000} tables={21} level={14} averageStack={326_087} prizePool={formatMoneyMinor(200_000_000, 'INR')} handForHand />
         <div className="g-broadcast-grid">
-          <BlindClock variant="broadcast" current={{ level: 14, smallBlind: 400, bigBlind: 800, ante: 800 }} next={{ level: 15, smallBlind: 500, bigBlind: 1000, ante: 1000 }} levelEndsAt={NOW + 271_000} serverOffsetMs={0} />
-          <Leaderboard
-            size="broadcast"
-            mode="stack"
-            rows={[
-              { id: '1', rank: 1, name: 'Diego Alvarez', stack: 1_480_000 },
-              { id: '2', rank: 2, name: 'Kenji Watanabe', stack: 1_210_500 },
-              { id: '3', rank: 3, name: 'Wei Zhang', stack: 998_400 },
-              { id: '4', rank: 4, name: 'Ravi Kapoor', stack: 912_000 },
-              { id: '5', rank: 5, name: 'Theo Martins', stack: 880_250 },
-            ]}
-          />
+          <div className="g-stack" style={{ gap: 24 }}>
+            <BlindClock variant="broadcast" current={{ level: 14, smallBlind: 400, bigBlind: 800, ante: 800 }} next={{ level: 15, smallBlind: 500, bigBlind: 1000, ante: 1000 }} levelEndsAt={NOW + 271_000} serverOffsetMs={0} />
+            <figure className="g-spark">
+              <figcaption>Players remaining · last 60 min</figcaption>
+              <Sparkline data={[2000, 1700, 1300, 950, 640, 420, 300, 230, 184]} tone="info" width={480} height={64} label="Players remaining over the last 60 minutes, falling from 2,000 to 184" />
+            </figure>
+          </div>
+          <Leaderboard size="broadcast" mode="stack" rows={top} totalPlayers={184} compactStacks={false} />
         </div>
         <MilestoneBanner size="broadcast" title="The money bubble has burst" detail="181 players are now guaranteed a prize" icon="award" />
-        <div className="g-row" style={{ justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--jpb-text-muted)' }}>
-            Prize pool <b style={{ color: 'var(--jpb-text)' }}>{formatMoneyMinor(200_000_000, 'INR')}</b>
-          </span>
-          <Sparkline data={[2000, 1700, 1300, 950, 640, 420, 300, 230, 184]} tone="info" width={240} height={40} label="Players remaining falling from 2,000 to 184" />
+      </div>
+    </Section>
+  );
+}
+
+/** Every tall table size at three phone widths (checked for overlaps by screenshot.mjs). */
+function GeometrySection() {
+  const mode = new URLSearchParams(window.location.search).get('mode') ?? 'hand';
+  return (
+    <Section id="geometry" eyebrow="Table" title="Tall geometry" lede="2–10 seats at 328 / 358 / 398px. No seat box may touch the board or another box.">
+      <div className="g-geom">
+        {GEOMETRY_SEATS.map((n) =>
+          GEOMETRY_WIDTHS.map((w) => (
+            <div key={`${n}-${w}`} className="g-geom__cell" style={{ width: w }} data-geom={`${n}@${w}`}>
+              <p className="g-label">
+                {n} seats · {w}px · {mode}
+              </p>
+              <PokerTable
+                variant="tall"
+                maxSeats={n}
+                seats={busySeats(n, mode === 'spectator' ? null : 0, mode === 'showdown')}
+                heroSeat={mode === 'spectator' ? null : 0}
+                board={['Qh', 'Jd', '4h', 'Kd', '9s']}
+                totalPot={48_150}
+                actingSeat={mode === 'hand' ? 2 % n : null}
+                actionDeadline={NOW + 12_000}
+                timerMs={20_000}
+                tableNumber={42}
+                handNumber={1284}
+                bigBlind={800}
+              />
+            </div>
+          )),
+        )}
+      </div>
+      <div className="g-row g-row--top" style={{ marginTop: 24 }}>
+        <div style={{ width: 366 }} data-compare="tall">
+          <PokerTable variant="tall" maxSeats={9} seats={MOBILE_SEATS} heroSeat={4} board={['Qh', 'Jd', '4h']} totalPot={9200} actingSeat={4} tableNumber={42} handNumber={1284} bigBlind={800} />
+        </div>
+        <div style={{ width: 366 }} data-compare="auto">
+          <PokerTable variant="auto" maxSeats={9} seats={MOBILE_SEATS} heroSeat={4} board={['Qh', 'Jd', '4h']} totalPot={9200} actingSeat={4} tableNumber={42} handNumber={1284} bigBlind={800} />
+        </div>
+        <div style={{ width: 366 }} data-compare="wide">
+          <PokerTable variant="wide" maxSeats={9} seats={MOBILE_SEATS} heroSeat={4} board={['Qh', 'Jd', '4h']} totalPot={9200} actingSeat={4} tableNumber={42} handNumber={1284} bigBlind={800} />
         </div>
       </div>
     </Section>
@@ -1038,6 +1286,8 @@ const SECTIONS: Array<{ id: string; label: string; el: () => ReactNode }> = [
   { id: 'admin', label: 'Admin', el: () => <AdminSection /> },
   { id: 'dialogs', label: 'Dialogs', el: () => <DialogsSection /> },
   { id: 'broadcast', label: 'Broadcast', el: () => <BroadcastSection /> },
+  { id: 'palette', label: 'Palette', el: () => <PaletteSection /> },
+  { id: 'geometry', label: 'Geometry', el: () => <GeometrySection /> },
 ];
 
 function Gallery() {
@@ -1056,6 +1306,7 @@ function Gallery() {
 
   const shown = only ? SECTIONS.filter((s) => s.id === only) : SECTIONS;
   if (only === 'admin') return <>{shown.map((s) => <div key={s.id}>{s.el()}</div>)}</>;
+  if (only === 'fit') return <FitPage />;
   return (
     <div className={only ? 'g-solo' : undefined}>
       {!only && (

@@ -6,7 +6,7 @@ import type { IconName } from './Icon';
 import { Kbd } from './Kbd';
 import { Spinner } from './Spinner';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'gold';
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'danger-outline' | 'ghost' | 'gold';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -27,7 +27,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 /**
  * The one button. Variants map to meaning: primary = positive/proceed (green),
- * danger = destructive (red), gold = milestone moments only.
+ * danger = THE destructive action of a view (filled red, at most one per view),
+ * danger-outline = other destructive actions, gold = milestone moments only.
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {

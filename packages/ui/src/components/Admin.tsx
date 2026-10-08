@@ -16,13 +16,15 @@ export interface PanelProps {
   /** Remove body padding (tables). */
   flush?: boolean;
   tone?: 'default' | 'danger' | 'gold';
+  /** Column layout whose body fills the panel height (for maps / lists that should not leave a dead band). */
+  fill?: boolean;
   className?: string;
 }
 
 /** Surface container used across the control room. */
-export function Panel({ title, description, actions, icon, children, flush = false, tone = 'default', className }: PanelProps) {
+export function Panel({ title, description, actions, icon, children, flush = false, tone = 'default', fill = false, className }: PanelProps) {
   return (
-    <section className={cx('jpb-panel', `jpb-panel--${tone}`, flush && 'jpb-panel--flush', className)}>
+    <section className={cx('jpb-panel', `jpb-panel--${tone}`, flush && 'jpb-panel--flush', fill && 'jpb-panel--fill', className)}>
       {(title || actions) && (
         <header className="jpb-panel__head">
           <div className="jpb-panel__titles">
@@ -143,6 +145,13 @@ export interface ActivityFeedProps {
   className?: string;
 }
 
+const SEVERITY_TEXT: Readonly<Record<NonNullable<ActivityEntry['severity']>, string>> = {
+  info: 'Info',
+  warning: 'Warning',
+  critical: 'Critical',
+  gold: 'Milestone',
+};
+
 const SEVERITY_ICON: Readonly<Record<NonNullable<ActivityEntry['severity']>, IconName>> = {
   info: 'info',
   warning: 'warning',
@@ -164,6 +173,7 @@ export function ActivityFeed({ entries, label = 'Activity', empty, className }: 
             </span>
             <div className="jpb-feed__body">
               <p className="jpb-feed__line">
+                <span className="jpb-sr-only">{SEVERITY_TEXT[sev]}: </span>
                 <span className="jpb-feed__action jpb-mono">{e.action}</span>
                 {e.target && <span className="jpb-feed__target">{e.target}</span>}
               </p>

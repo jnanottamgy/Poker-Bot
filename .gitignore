@@ -10,3 +10,7 @@ coverage/
 *.tsbuildinfo
 /tmp/
 /data/
+
+# Generated screenshots (regenerate with the screenshot scripts)
+packages/ui/gallery/screenshots/
+apps/*/screenshots/

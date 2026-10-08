@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef } from 'react';
+import { useId, useRef } from 'react';
 import { cx } from '../cx';
 import { formatChips, formatCount, formatMoneyMinor } from '../format';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export interface ChampionOverlayProps {
   name: string;
@@ -34,10 +35,12 @@ export function ChampionOverlay({
   className,
 }: ChampionOverlayProps) {
   const uid = useId();
-  const btn = useRef<HTMLButtonElement>(null);
-  useEffect(() => btn.current?.focus(), []);
+  const root = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Fixed overlay = modal: focus starts on the name, Tab stays inside, Esc continues.
+  useFocusTrap(root, position === 'fixed', { initial: heading, onEscape: onClose });
   return (
-    <div className={cx('jpb-champ', `jpb-champ--${position}`, className)} role="dialog" aria-modal={position === 'fixed' ? true : undefined} aria-labelledby={`${uid}-name`} aria-describedby={`${uid}-desc`}>
+    <div ref={root} className={cx('jpb-champ', `jpb-champ--${position}`, className)} role="dialog" aria-modal={position === 'fixed' ? true : undefined} aria-labelledby={`${uid}-name`} aria-describedby={`${uid}-desc`}>
       <div className="jpb-champ__bloom" aria-hidden="true" />
       <div className="jpb-champ__rings" aria-hidden="true">
         <span />
@@ -50,11 +53,17 @@ export function ChampionOverlay({
         </div>
         {tournamentName && <p className="jpb-champ__event">{tournamentName}</p>}
         <p className="jpb-champ__title">CHAMPION</p>
-        <h2 id={`${uid}-name`} className="jpb-champ__name">
+        <h2 id={`${uid}-name`} ref={heading} tabIndex={-1} className="jpb-champ__name">
           {name}
         </h2>
         <p className="jpb-champ__place">1ST PLACE</p>
-        <dl id={`${uid}-desc`} className="jpb-champ__stats">
+        <dl id={`${uid}-desc`} className={cx('jpb-champ__stats', prizeMinor > 0 && 'has-prize')}>
+          {prizeMinor > 0 && (
+            <div className="jpb-champ__prize">
+              <dt>Prize</dt>
+              <dd className="jpb-num">{formatMoneyMinor(prizeMinor, currency)}</dd>
+            </div>
+          )}
           <div>
             <dt>Final stack</dt>
             <dd className="jpb-num">{formatChips(stack)}</dd>
@@ -63,15 +72,9 @@ export function ChampionOverlay({
             <dt>Players</dt>
             <dd className="jpb-num">{formatCount(playersInField)}</dd>
           </div>
-          {prizeMinor > 0 && (
-            <div>
-              <dt>Prize</dt>
-              <dd className="jpb-num">{formatMoneyMinor(prizeMinor, currency)}</dd>
-            </div>
-          )}
         </dl>
         {onClose && (
-          <Button ref={btn} variant="gold" size="lg" onClick={onClose}>
+          <Button variant="gold" size="lg" onClick={onClose} className="jpb-champ__continue">
             Continue
           </Button>
         )}

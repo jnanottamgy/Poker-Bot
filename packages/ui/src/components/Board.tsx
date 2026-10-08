@@ -30,7 +30,7 @@ export function Board({ cards, size = 'md', winningCards, animate = true, classN
   const spoken = cards.length === 0 ? 'Board: no cards yet' : `Board: ${cards.map(cardLabel).join(', ')}`;
   const win = winningCards ? new Set(winningCards) : null;
   return (
-    <div className={cx('jpb-board', `jpb-board--${size}`, className)} role="group" aria-label={spoken}>
+    <div className={cx('jpb-board', `jpb-board--${size}`, win && 'has-winners', className)} role="group" aria-label={spoken}>
       {Array.from({ length: SLOTS }, (_, i) => {
         const card = cards[i];
         if (!card) return <span key={`slot-${i}`} className={cx('jpb-board__slot', `jpb-card--${size}`)} aria-hidden="true" />;

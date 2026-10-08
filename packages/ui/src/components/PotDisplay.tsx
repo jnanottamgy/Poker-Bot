@@ -14,7 +14,8 @@ export interface PotDisplayProps {
 
 /** Pot total with a short count-up and a soft bump when it grows. */
 export function PotDisplay({ total, pots, size = 'md', label = 'Pot', className }: PotDisplayProps) {
-  const shown = useAnimatedNumber(total);
+  const root = useRef<HTMLDivElement>(null);
+  const shown = useAnimatedNumber(total, 450, root);
   const prev = useRef(total);
   const [bump, setBump] = useState(0);
   useEffect(() => {
@@ -24,7 +25,7 @@ export function PotDisplay({ total, pots, size = 'md', label = 'Pot', className 
 
   const sidePots = pots && pots.length > 1 ? pots : null;
   return (
-    <div className={cx('jpb-pot', `jpb-pot--${size}`, className)}>
+    <div ref={root} className={cx('jpb-pot', `jpb-pot--${size}`, className)}>
       <span className="jpb-sr-only">
         {`${label} ${formatChips(total)} chips`}
         {sidePots ? `. ${sidePots.map((p, i) => `${i === 0 ? 'Main pot' : `Side pot ${i}`} ${formatChips(p.amount)}`).join(', ')}` : ''}

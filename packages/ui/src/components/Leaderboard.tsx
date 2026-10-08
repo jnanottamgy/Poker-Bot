@@ -58,16 +58,25 @@ export function Leaderboard({ rows, mode, currency = 'INR', compactStacks = true
           {rows.map((r) => (
             <tr key={r.id} className={cx(r.isYou && 'is-you', mode === 'finish' && r.rank <= 3 && `is-podium is-p${r.rank}`)}>
               <td className="jpb-board-list__rank jpb-num">
-                {r.tied ? 'T' : ''}
+                {r.tied && (
+                  <>
+                    <span aria-hidden="true">T</span>
+                    <span className="jpb-sr-only">Tied </span>
+                  </>
+                )}
                 {formatCount(r.rank)}
               </td>
               <td className="jpb-board-list__name">
                 <span className="jpb-board-list__namewrap">
-                  <span>{r.name}</span>
+                  <span className="jpb-board-list__nametext">{r.name}</span>
                   {r.isYou && <span className="jpb-board-list__you">YOU</span>}
-                  {r.publicId && <span className="jpb-board-list__pid">{r.publicId}</span>}
-                  {mode === 'stack' && r.tableNumber !== undefined && r.tableNumber !== null && <span className="jpb-board-list__pid">Table {r.tableNumber}</span>}
                 </span>
+                {(r.publicId || (mode === 'stack' && r.tableNumber !== undefined && r.tableNumber !== null)) && (
+                  <span className="jpb-board-list__sub">
+                    {r.publicId && <span>{r.publicId}</span>}
+                    {mode === 'stack' && r.tableNumber !== undefined && r.tableNumber !== null && <span>Table {r.tableNumber}</span>}
+                  </span>
+                )}
               </td>
               <td className="is-num jpb-num" title={r.stack !== undefined ? `${formatChips(r.stack)} chips` : undefined}>
                 {mode === 'finish'

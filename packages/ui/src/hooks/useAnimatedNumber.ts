@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { useReducedMotion } from './useReducedMotion';
 
 /** Ease-out cubic: fast start, gentle landing. */
@@ -9,10 +10,11 @@ function easeOut(t: number): number {
 /**
  * Short count-up/down toward `value` (integers only). Purely cosmetic: the
  * final frame is always exactly `value`, and with reduced motion (or a
- * duration of 0) the value is returned immediately.
+ * duration of 0) the value is returned immediately. Pass `scope` (a ref to
+ * the rendered element) to honour data-motion="reduced" on any ancestor.
  */
-export function useAnimatedNumber(value: number, durationMs = 450): number {
-  const reduced = useReducedMotion();
+export function useAnimatedNumber(value: number, durationMs = 450, scope?: RefObject<Element | null>): number {
+  const reduced = useReducedMotion(scope);
   const [display, setDisplay] = useState(value);
   const fromRef = useRef(value);
 

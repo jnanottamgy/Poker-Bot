@@ -208,20 +208,22 @@ export function PlayerSeat(props: PlayerSeatProps) {
             {!connected && <Icon name="wifi-off" className="jpb-seat__stateicon is-offline" />}
             {connected && away && <Icon name="moon" className="jpb-seat__stateicon" />}
           </span>
-          <span className={cx('jpb-seat__stack', 'jpb-num', allIn && 'is-allin')} title={`${formatChips(stack)} chips`}>
-            {allIn ? 'ALL-IN' : formatChipsCompact(stack)}
+          <span className="jpb-seat__stackline">
+            <span className={cx('jpb-seat__stack', 'jpb-num', allIn && 'is-allin')} title={`${formatChips(stack)} chips`}>
+              {allIn ? 'ALL-IN' : formatChipsCompact(stack)}
+            </span>
+            {isButton && (
+              <Badge tone="neutral" variant="solid" className="jpb-seat__dealer">
+                D
+              </Badge>
+            )}
+            {isSmallBlind && <Badge tone="info">SB</Badge>}
+            {isBigBlind && <Badge tone="info">BB</Badge>}
           </span>
         </div>
         <div className="jpb-seat__tags">
           {acting && <span className="jpb-seat__flag jpb-seat__flag--act">TO ACT</span>}
           {winner && <span className="jpb-seat__flag jpb-seat__flag--win">WINNER +{formatChipsCompact(winAmount)}</span>}
-          {isButton && (
-            <Badge tone="neutral" variant="solid" className="jpb-seat__dealer">
-              D
-            </Badge>
-          )}
-          {isSmallBlind && <Badge tone="info">SB</Badge>}
-          {isBigBlind && <Badge tone="info">BB</Badge>}
           {folded && !allIn && <Badge className="jpb-seat__state">FOLDED</Badge>}
           {!connected && (
             <Badge tone="danger" className="jpb-seat__state jpb-seat__state--sec">
