@@ -1,0 +1,104 @@
+# Johnny's Poker Bot — self-hosted, zero-cost deployment.
+#
+#   node scripts/setup-env.mjs        # once: writes .env with strong random secrets
+#   docker compose up -d              # app + PostgreSQL + hourly backups
+#   docker compose --profile tunnel up -d       # + free public HTTPS URL (Cloudflare quick tunnel)
+#   docker compose --profile monitoring up -d   # + Prometheus + Grafana
+#
+# See docs/DEPLOYMENT.md.
+name: johnnys-poker-bot
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jpb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run node scripts/setup-env.mjs first}
+      POSTGRES_DB: jpb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U jpb -d jpb']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    command: ['postgres', '-c', 'max_connections=200', '-c', 'shared_buffers=256MB', '-c', 'synchronous_commit=on']
+
+  app:
+    build: .
+    image: johnnys-poker-bot:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_URL: postgres://jpb:${POSTGRES_PASSWORD}@postgres:5432/jpb
+      SEED_ENCRYPTION_KEY: ${SEED_ENCRYPTION_KEY:?run node scripts/setup-env.mjs first}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?run node scripts/setup-env.mjs first}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ALLOW_INSECURE_LAN_HTTP: ${ALLOW_INSECURE_LAN_HTTP:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '${APP_PORT:-8080}:8080'
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        while true; do
+          ts=$$(date -u +%Y%m%dT%H%M%SZ)
+          pg_dump -h postgres -U jpb -d jpb -Fc -f /backups/jpb-$$ts.dump && echo "backup ok $$ts" || echo "backup FAILED $$ts"
+          find /backups -name 'jpb-*.dump' -mtime +$$BACKUP_RETENTION_DAYS -delete
+          sleep 3600
+        done
+
+  tunnel:
+    profiles: ['tunnel']
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on: [app]
+    command: ['tunnel', '--no-autoupdate', '--url', 'http://app:8080']
+
+  prometheus:
+    profiles: ['monitoring']
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    ports:
+      - '127.0.0.1:9090:9090'
+
+  grafana:
+    profiles: ['monitoring']
+    image: grafana/grafana-oss:latest
+    restart: unless-stopped
+    depends_on: [prometheus]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
+    volumes:
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - '127.0.0.1:3000:3000'
+
+volumes:
+  pgdata:

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: johnnys-poker-bot
+    folder: Johnny's Poker Bot
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards

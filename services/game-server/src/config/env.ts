@@ -29,6 +29,12 @@ const envSchema = z.object({
   SEED_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/).optional(),
   COOKIE_SECURE: bool.optional(),
   TRUST_PROXY: bool.default(false),
+  /**
+   * Venue LAN mode: allows plain-HTTP cookies in production for an offline
+   * local network (players join http://192.168.x.x). Prefer HTTPS via the free
+   * Cloudflare tunnel profile whenever internet is available.
+   */
+  ALLOW_INSECURE_LAN_HTTP: bool.default(false),
   /** Allows accelerated "speed mode" tournaments (1-second levels) — never enable for real events. */
   SPEED_MODE_ALLOWED: bool.optional(),
   /** Allows the simulation / demo tournament endpoints. */
@@ -58,6 +64,7 @@ export interface ServerEnv {
   seedKeyIsEphemeral: boolean;
   cookieSecure: boolean;
   trustProxy: boolean;
+  insecureLanHttp: boolean;
   speedModeAllowed: boolean;
   simulationAllowed: boolean;
   bootstrapAdmin: { username: string; password: string } | null;
@@ -85,7 +92,9 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     const problems: string[] = [];
     if (!e.DATABASE_URL) problems.push('DATABASE_URL is required in production (crash recovery needs persistence)');
     if (!e.SEED_ENCRYPTION_KEY) problems.push('SEED_ENCRYPTION_KEY is required in production');
-    if (e.COOKIE_SECURE === false) problems.push('COOKIE_SECURE=false is not allowed in production');
+    if (e.COOKIE_SECURE === false && !e.ALLOW_INSECURE_LAN_HTTP) {
+      problems.push('COOKIE_SECURE=false is not allowed in production (set ALLOW_INSECURE_LAN_HTTP=true only for an offline venue LAN)');
+    }
     if (e.NODE_ROLE !== 'all' && !e.REDIS_URL) problems.push(`NODE_ROLE=${e.NODE_ROLE} requires REDIS_URL`);
     if (problems.length) throw new EnvError(`Unsafe production configuration: ${problems.join('; ')}`);
   }
@@ -110,6 +119,7 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     seedKeyIsEphemeral: !e.SEED_ENCRYPTION_KEY,
     cookieSecure: e.COOKIE_SECURE ?? production,
     trustProxy: e.TRUST_PROXY,
+    insecureLanHttp: e.ALLOW_INSECURE_LAN_HTTP,
     speedModeAllowed: e.SPEED_MODE_ALLOWED ?? !production,
     simulationAllowed: e.SIMULATION_ALLOWED ?? !production,
     bootstrapAdmin:

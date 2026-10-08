@@ -55,3 +55,13 @@ describe('env', () => {
     expect(() => loadEnv({ NODE_ROLE: 'gateway' })).toThrow(EnvError);
   });
 });
+
+describe('env LAN mode', () => {
+  it('allows insecure cookies in production only with the explicit LAN flag', () => {
+    const base = { NODE_ENV: 'production', DATABASE_URL: 'postgres://x', SEED_ENCRYPTION_KEY: 'ab'.repeat(32), COOKIE_SECURE: 'false' };
+    expect(() => loadEnv(base)).toThrow(EnvError);
+    const lan = loadEnv({ ...base, ALLOW_INSECURE_LAN_HTTP: 'true' });
+    expect(lan.cookieSecure).toBe(false);
+    expect(lan.insecureLanHttp).toBe(true);
+  });
+});

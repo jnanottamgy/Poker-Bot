@@ -1,0 +1,25 @@
+groups:
+  - name: johnnys-poker-bot
+    rules:
+      - alert: ChipConservationFailed
+        expr: increase(jpb_integrity_violations_total{code="CHIP_CONSERVATION"}[5m]) > 0
+        labels: { severity: critical }
+        annotations: { summary: 'Chip conservation invariant failed — affected tables are held' }
+      - alert: TableStalled
+        expr: jpb_tables_stalled > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations: { summary: '{{ $value }} table(s) made no progress beyond the stall threshold' }
+      - alert: ActionLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(jpb_action_latency_ms_bucket[5m])) by (le)) > 200
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: 'p95 player action acknowledgement above 200ms' }
+      - alert: WebSocketDisconnectSpike
+        expr: rate(jpb_ws_disconnects_total[2m]) > 5 * rate(jpb_ws_disconnects_total[30m] offset 5m) and rate(jpb_ws_disconnects_total[2m]) > 1
+        labels: { severity: warning }
+        annotations: { summary: 'WebSocket disconnect rate spiking' }
+      - alert: DatabaseErrors
+        expr: increase(jpb_db_errors_total[5m]) > 5
+        labels: { severity: critical }
+        annotations: { summary: 'Database errors detected' }
