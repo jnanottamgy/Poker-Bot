@@ -20,7 +20,7 @@ export function replayRun(host: SimulationHost, opts: { tournamentId: string; se
     const tr = directorReduce(director, input, {
       now: at,
       index,
-      drawSource: (purpose) => drawSource({ serverSeed: opts.serverSeed, tournamentId: opts.tournamentId, purpose, publicEntropy: director.publicEntropy ?? '0'.repeat(64) }),
+      drawSource: (purpose, publicEntropy) => drawSource({ serverSeed: opts.serverSeed, tournamentId: opts.tournamentId, purpose, publicEntropy }),
     });
     if (tr.reply.ok) director = tr.state;
   }

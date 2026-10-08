@@ -65,8 +65,8 @@ export function start(d: Draft, publicEntropy: string): void {
     playerIds: registered.map((p) => p.playerId),
     cfg: cfg.tables,
     consolidateBy: cfg.balancing.consolidateBy,
-    rng: d.ctx.drawSource('seating'),
-    buttonSource: (n) => d.ctx.drawSource(`button:${tableIdFor(d.s.tournamentId, n)}`),
+    rng: d.ctx.drawSource('seating', publicEntropy),
+    buttonSource: (n) => d.ctx.drawSource(`button:${tableIdFor(d.s.tournamentId, n)}`, publicEntropy),
   });
   const byId = new Map(registered.map((p) => [p.playerId, p]));
   const single = seating.tables.length === 1 && registered.length <= cfg.tables.finalTableSize;

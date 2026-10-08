@@ -12,7 +12,7 @@ export { lateRegistrationOpen, positionsDeferred, reentryOpen } from './registra
 export { paidPlaces, prizeAt, splitTiedPrizes } from './prizes';
 export { ordinal, TEMPLATES } from './commentary';
 export { tableIdFor } from './start';
-export { bmGet, bmValues, bucketOf, BUCKET_COUNT } from './bucketMap';
+export { bmDelete, bmGet, bmSet, bmSetMany, bmValues, bucketOf, BUCKET_COUNT, emptyBucketMap } from './bucketMap';
 export type { BucketMap } from './bucketMap';
 export {
   directorStats,

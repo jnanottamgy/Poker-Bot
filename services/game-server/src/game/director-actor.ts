@@ -1,0 +1,362 @@
+import type { TournamentEvent, TournamentEventEnvelope } from '@jpb/shared-types';
+import {
+  bmGet,
+  bmSet,
+  bmValues,
+  buildTableIndex,
+  createDirectorState,
+  directorReduce,
+  directorStats,
+  emptyBucketMap,
+  getDirectorPlayer,
+  leaderboard,
+  nextTickAt,
+  openTableList,
+  playerSelf,
+  tournamentSummary,
+} from '@jpb/tournament-engine';
+import type { BucketMap, CreateDirectorInput, DirectorEffect, DirectorInput, DirectorReply, DirectorState } from '@jpb/tournament-engine';
+import type { TableCountIndex } from '@jpb/balancing-engine';
+import { drawSource } from '@jpb/fairness-engine/node';
+import type { ActorDefinition, ActorEnvelope, OutboxMessage, StepResult, TimerRequest } from '../runtime/actor';
+import { noopResult, stepResult } from '../runtime/actor';
+import { channels } from '../bus/bus';
+import type { PlayerChannelMessage, TournamentEventMessage } from '../runtime/contracts';
+import type { Repos } from '../persistence/store';
+import { newId } from '../security/ids';
+import { OUTBOX_KICK_CHANNEL } from './messages';
+import type { ToTable } from './messages';
+
+/** Audit metadata carried by admin inputs; written in the same transaction as the change. */
+export interface AuditMeta {
+  adminId: string;
+  adminUsername: string;
+  action: string;
+  target: string;
+  reason: string | null;
+  ip: string | null;
+}
+
+export interface DirectorActorState {
+  tournamentId: string;
+  director: DirectorState | null;
+  /** Highest report sequence applied per table (idempotent re-delivery). */
+  reportSeqs: BucketMap<number>;
+  /** Tournament event sequence (gap-free). */
+  eventSeq: number;
+}
+
+export type DirectorQuery =
+  | { q: 'SUMMARY' }
+  | { q: 'STATE' }
+  | { q: 'PLAYER_SELF'; playerId: string }
+  | { q: 'PLAYER'; playerId: string }
+  | { q: 'LEADERBOARD'; mode: 'stack' | 'finish'; offset: number; limit: number }
+  | { q: 'TABLES' }
+  | { q: 'OVERVIEW' };
+
+export type DirectorActorCommand =
+  | { kind: 'CREATE'; input: CreateDirectorInput }
+  | { kind: 'INPUT'; input: DirectorInput; audit?: AuditMeta }
+  | { kind: 'REPORT'; tableId: string; rseq: number; input: DirectorInput }
+  | { kind: 'TICK' }
+  | { kind: 'QUERY'; query: DirectorQuery };
+
+export type DirectorActorReply = DirectorReply & { data?: unknown; duplicate?: boolean };
+
+const OK: DirectorActorReply = { ok: true, code: null, message: null };
+
+export interface DirectorActorDeps {
+  seedFor(tournamentId: string): string;
+  snapshotEvery: number;
+}
+
+function auditSnapshot(s: DirectorState | null) {
+  if (!s) return null;
+  return { status: s.status, frozen: s.frozen, level: s.config.blindSchedule[s.clock.levelIndex]?.level ?? null, counters: s.counters, handForHand: s.handForHand.enabled };
+}
+
+export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDefinition<DirectorActorState, DirectorActorCommand, DirectorActorReply> {
+  // The table-count index is derived data; it is cached per state object and rebuilt when missing.
+  const indexes = new WeakMap<DirectorState, TableCountIndex>();
+  const indexFor = (s: DirectorState) => {
+    let i = indexes.get(s);
+    if (!i) {
+      i = buildTableIndex(s);
+      indexes.set(s, i);
+    }
+    return i;
+  };
+
+  function step(state: DirectorActorState, env: ActorEnvelope<DirectorActorCommand>): StepResult<DirectorActorState, DirectorActorReply> {
+    const c = env.command;
+    if (c.kind === 'QUERY') return noopResult(state, query(state, c.query, env.at));
+    if (c.kind === 'CREATE') {
+      if (state.director) return noopResult(state, { ...OK, duplicate: true });
+      const director = createDirectorState(c.input);
+      return stepResult({ ...state, director }, OK, {
+        projection: async (repos) => {
+          await repos.tournaments.setCounters(state.tournamentId, { registered: 0, active: 0, eliminated: 0, tables: 0, handsCompleted: 0 });
+        },
+      });
+    }
+    if (!state.director) return noopResult(state, { ok: false, code: 'NOT_CREATED', message: 'Tournament director not initialized.' });
+    if (c.kind === 'REPORT') {
+      const last = bmGet(state.reportSeqs, c.tableId) ?? 0;
+      if (c.rseq <= last) return noopResult(state, { ...OK, duplicate: true });
+      return reduce(state, env, c.input, null, { tableId: c.tableId, rseq: c.rseq });
+    }
+    const input: DirectorInput = c.kind === 'TICK' ? { type: 'TICK' } : c.input;
+    return reduce(state, env, input, c.kind === 'INPUT' ? (c.audit ?? null) : null, null);
+  }
+
+  function reduce(
+    state: DirectorActorState,
+    env: ActorEnvelope<DirectorActorCommand>,
+    input: DirectorInput,
+    audit: AuditMeta | null,
+    report: { tableId: string; rseq: number } | null,
+  ): StepResult<DirectorActorState, DirectorActorReply> {
+    const before = state.director!;
+    const index = indexFor(before);
+    let tr;
+    try {
+      tr = directorReduce(before, input, {
+        now: env.at,
+        index,
+        drawSource: (purpose, publicEntropy) => drawSource({ serverSeed: deps.seedFor(state.tournamentId), tournamentId: state.tournamentId, purpose, publicEntropy }),
+      });
+    } catch (err) {
+      indexes.delete(before);
+      throw err;
+    }
+    if (!tr.reply.ok) {
+      indexes.delete(before);
+      // A rejected report still advances the dedupe mark so it is never re-applied.
+      if (report) return stepResult({ ...state, reportSeqs: bmSet(state.reportSeqs, report.tableId, report.rseq) }, tr.reply);
+      return noopResult(state, tr.reply);
+    }
+    const director = tr.state;
+    indexes.delete(before);
+    indexes.set(director, index);
+
+    let eventSeq = state.eventSeq;
+    const envelopes: TournamentEventEnvelope[] = tr.events.map((event) => ({ tournamentId: state.tournamentId, seq: ++eventSeq, at: env.at, event }));
+    const next: DirectorActorState = {
+      ...state,
+      director,
+      eventSeq,
+      reportSeqs: report ? bmSet(state.reportSeqs, report.tableId, report.rseq) : state.reportSeqs,
+    };
+
+    const toTables: Array<{ targetKind: string; targetId: string; payload: ToTable }> = [];
+    const bus: OutboxMessage[] = [];
+    const timers: TimerRequest[] = [];
+    const cancelTimers: string[] = [];
+    const changedPlayers: string[] = [];
+    const alerts: Array<Extract<DirectorEffect, { type: 'INTEGRITY_ALERT' }>> = [];
+    const createdTables: Array<Extract<DirectorEffect, { type: 'CREATE_TABLE' }>> = [];
+    for (const e of tr.effects) {
+      switch (e.type) {
+        case 'CREATE_TABLE':
+          createdTables.push(e);
+          toTables.push({
+            targetKind: 'table',
+            targetId: e.tableId,
+            payload: {
+              dseq: 0,
+              command: {
+                type: 'INIT',
+                input: { tableId: e.tableId, tournamentId: state.tournamentId, tableNumber: e.tableNumber, maxSeats: e.maxSeats, timing: e.timing, blinds: e.blinds, initialButtonSeat: e.initialButtonSeat, createdAt: env.at },
+                publicEntropy: director.publicEntropy ?? '',
+                serverSeedHash: director.serverSeedHash,
+              },
+            },
+          });
+          break;
+        case 'TABLE_COMMAND': {
+          const dseq = Number(e.key.slice(e.key.lastIndexOf(':E') + 2));
+          toTables.push({ targetKind: 'table', targetId: e.tableId, payload: { dseq, command: e.command } });
+          break;
+        }
+        case 'NOTIFY_PLAYER':
+          bus.push({ channel: channels.player(e.playerId), message: { kind: 'NOTICE', notice: e.notice } satisfies PlayerChannelMessage });
+          break;
+        case 'SCHEDULE_TICK':
+          if (e.at === null) cancelTimers.push('TICK');
+          else timers.push({ key: 'TICK', at: e.at, token: String(e.at) });
+          break;
+        case 'INTEGRITY_ALERT':
+          alerts.push(e);
+          break;
+        case 'PLAYER_CHANGED':
+          changedPlayers.push(e.player.playerId);
+          break;
+      }
+    }
+    for (const pid of changedPlayers) {
+      const self = playerSelf(director, pid);
+      if (self) bus.push({ channel: channels.player(pid), message: { kind: 'SELF_UPDATE', self } satisfies PlayerChannelMessage });
+    }
+    const summary = envelopes.length ? tournamentSummary(director, eventSeq) : null;
+    for (const envelope of envelopes) {
+      bus.push({ channel: channels.tournamentEvents(state.tournamentId), message: { kind: 'TOURNAMENT_EVENT', tournamentId: state.tournamentId, envelope, summary: summary! } satisfies TournamentEventMessage });
+    }
+    for (const a of alerts) bus.push({ channel: channels.admin(state.tournamentId), message: { kind: 'ALERT', alert: a } });
+    if (toTables.length) bus.push({ channel: OUTBOX_KICK_CHANNEL, message: { sourceKind: 'director', sourceId: state.tournamentId } });
+
+    const projection = async (repos: Repos) => {
+      for (const t of createdTables) {
+        await repos.tableLogs.createTable({ id: t.tableId, tournamentId: state.tournamentId, tableNumber: t.tableNumber, maxSeats: t.maxSeats, status: 'WAITING', isFinalTable: t.isFinalTable });
+      }
+      if (toTables.length) await repos.outbox.add('director', state.tournamentId, toTables);
+      await projectPlayers(repos, director, changedPlayers);
+      await projectEvents(repos, state.tournamentId, director, tr.events, env.at);
+      if (before.counters !== director.counters || before.status !== director.status) {
+        await repos.tournaments.setCounters(state.tournamentId, {
+          registered: director.counters.registered,
+          active: director.counters.active,
+          eliminated: director.counters.eliminated,
+          tables: director.counters.tables,
+          handsCompleted: director.counters.handsCompleted,
+        });
+      }
+      for (const a of alerts) {
+        const target = a.tableId ? `table:${a.tableId}` : null;
+        const code = (['CHIP_CONSERVATION_FAILED', 'INVARIANT_VIOLATION', 'TABLE_STALLED'].includes(a.code) ? a.code : 'INVARIANT_VIOLATION') as 'INVARIANT_VIOLATION';
+        if (!(await repos.alerts.findOpen(state.tournamentId, code, target))) {
+          await repos.alerts.create({ id: newId('alt'), tournamentId: state.tournamentId, severity: a.severity, code, message: `${a.code}: ${a.detail}`, target });
+        }
+      }
+      if (audit) {
+        await repos.audit.append({
+          id: newId('aud'),
+          at: env.at,
+          tournamentId: state.tournamentId,
+          adminId: audit.adminId,
+          adminUsername: audit.adminUsername,
+          action: audit.action,
+          target: audit.target,
+          reason: audit.reason,
+          beforeState: auditSnapshot(before),
+          afterState: { ...auditSnapshot(director), input },
+          ip: audit.ip,
+        });
+      }
+    };
+
+    return stepResult(next, OK, {
+      events: envelopes.map((e) => ({ seq: e.seq, version: e.seq, at: e.at, kind: e.event.kind, visibility: 'PUBLIC', privateTo: null, payload: e.event })),
+      timers,
+      cancelTimers,
+      outbox: bus,
+      projection,
+    });
+  }
+
+  function query(state: DirectorActorState, q: DirectorQuery, now: number): DirectorActorReply {
+    const d = state.director;
+    if (!d) return { ...OK, data: null };
+    switch (q.q) {
+      case 'SUMMARY':
+        return { ...OK, data: tournamentSummary(d, state.eventSeq) };
+      case 'STATE':
+        return { ...OK, data: d };
+      case 'PLAYER_SELF':
+        return { ...OK, data: playerSelf(d, q.playerId) };
+      case 'PLAYER': {
+        const p = getDirectorPlayer(d, q.playerId);
+        const move = p ? Object.values(d.pendingMoves).find((m) => m.playerId === p.playerId) ?? null : null;
+        return { ...OK, data: p ? { player: p, pendingMove: move } : null };
+      }
+      case 'LEADERBOARD': {
+        const lb = leaderboard(d, q.mode, q.offset, q.limit);
+        return { ...OK, data: { total: lb.total, rows: lb.rows.map((r) => ({ rank: r.rank, tableNumber: r.tableNumber, player: r.player })) } };
+      }
+      case 'TABLES':
+        return { ...OK, data: openTableList(d) };
+      case 'OVERVIEW':
+        return { ...OK, data: { director: { ...d, players: { size: d.players.size, buckets: {} } }, stats: directorStats(d, now), summary: tournamentSummary(d, state.eventSeq), eventSeq: state.eventSeq } };
+    }
+  }
+
+  return {
+    kind: 'director',
+    snapshotEvery: deps.snapshotEvery,
+    initialState: (actorId) => ({ tournamentId: actorId, director: null, reportSeqs: emptyBucketMap(), eventSeq: 0 }),
+    step,
+    commandType: (c) => (c.kind === 'INPUT' || c.kind === 'REPORT' ? c.input.type : c.kind),
+    actionIdOf: () => null,
+    timerCommand: () => ({ kind: 'TICK' }),
+    pendingTimers: (s) => {
+      if (!s.director) return [];
+      const at = nextTickAt(s.director);
+      return at === null ? [] : [{ key: 'TICK', at, token: String(at) }];
+    },
+    eventSeqOf: (s) => s.eventSeq,
+  };
+}
+
+/** Entry projection for players whose director record changed. */
+async function projectPlayers(repos: Repos, d: DirectorState, playerIds: string[]): Promise<void> {
+  for (const id of playerIds) {
+    const p = getDirectorPlayer(d, id);
+    if (!p) continue;
+    const table = p.tableId ? bmGet(d.tables, p.tableId) : undefined;
+    const stack = table?.summary.seats.find((s) => s.playerId === id)?.stack ?? p.stack;
+    await repos.players.updateEntryState(p.entryId, {
+      status: p.status,
+      tableId: p.tableId,
+      seat: p.seat,
+      stack,
+      handsPlayed: p.stats.handsPlayedTotal,
+      finishPosition: p.finishPosition,
+      tiedCount: p.tiedCount,
+      prizeMinor: p.prizeMinor,
+      eliminatedAt: p.elimination ? new Date(p.elimination.eliminatedAt) : null,
+      eliminationHandId: p.elimination?.handId || null,
+      ...(p.status === 'REGISTERED' ? {} : {}),
+    });
+  }
+}
+
+/** Status, eliminations, movements and completion projections from tournament events. */
+async function projectEvents(repos: Repos, tournamentId: string, d: DirectorState, events: TournamentEvent[], at: number): Promise<void> {
+  for (const e of events) {
+    switch (e.kind) {
+      case 'TOURNAMENT_STATUS_CHANGED':
+        await repos.tournaments.updateStatus(tournamentId, e.to);
+        if (e.to === 'STARTING') {
+          await repos.tournaments.lockConfig(tournamentId);
+          if (d.publicEntropy) await repos.tournaments.setPublicEntropy(tournamentId, d.publicEntropy);
+        }
+        break;
+      case 'PLAYER_ELIMINATED': {
+        const r = e.record;
+        await repos.q.query(
+          `INSERT INTO eliminations (tournament_id, entry_id, player_id, finish_position, tied_count, eliminated_at, hand_id, hand_number, table_id, batch_id, starting_stack_of_hand, reason)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (tournament_id, entry_id) DO UPDATE SET finish_position = EXCLUDED.finish_position, tied_count = EXCLUDED.tied_count`,
+          [tournamentId, r.entryId, r.playerId, Math.max(1, r.finishPosition || 1), r.tiedCount, r.eliminatedAt, r.handId || null, r.handNumber || null, r.tableId, r.batchId, r.startingStackOfHand, r.handId ? 'BUSTED' : 'DISQUALIFIED'],
+        );
+        break;
+      }
+      case 'TABLE_MOVE': {
+        const m = e.movement;
+        await repos.q.query(
+          `INSERT INTO player_movements (id, tournament_id, player_id, reason, from_table_id, from_seat, to_table_id, to_seat, stack, requested_at, completed_at, score_breakdown)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING`,
+          [m.moveId, tournamentId, m.playerId, m.reason, m.fromTableId, m.fromSeat, m.toTableId, m.toSeat, m.stack, m.requestedAt, m.completedAt, m.scoreBreakdown ? JSON.stringify(m.scoreBreakdown) : null],
+        );
+        break;
+      }
+      case 'TOURNAMENT_COMPLETED':
+        await repos.tournaments.setWinner(tournamentId, e.winnerId);
+        await projectPlayers(repos, d, bmValues(d.players).filter((p) => p.finishPosition !== null).map((p) => p.playerId).slice(0, 10_000));
+        break;
+      default:
+        break;
+    }
+  }
+  void at;
+}

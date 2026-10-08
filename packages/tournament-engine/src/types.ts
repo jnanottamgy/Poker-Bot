@@ -284,8 +284,12 @@ export interface DirectorTransition {
 
 export interface DirectorContext {
   now: EpochMs;
-  /** Deterministic draw stream (fairness-engine drawSource) for seat/button draws. */
-  drawSource(purpose: string): RandomSource;
+  /**
+   * Deterministic draw stream (fairness-engine drawSource) for seat/button
+   * draws, bound to the tournament's frozen public entropy (passed explicitly:
+   * START freezes it in the same transition that performs the seat draw).
+   */
+  drawSource(purpose: string, publicEntropy: string): RandomSource;
   /**
    * Optional cache of the table-count index, kept by the host in sync with
    * state (rebuild with buildTableIndex(state) after recovery or any failed

@@ -98,8 +98,8 @@ export class SimulationHost {
     return this.scheduler.now;
   }
 
-  draw(purpose: string): RandomSource {
-    return drawSource({ serverSeed: this.opts.serverSeed, tournamentId: this.opts.tournamentId, purpose, publicEntropy: this.director.publicEntropy ?? '0'.repeat(64) });
+  draw(purpose: string, publicEntropy: string = this.director.publicEntropy ?? '0'.repeat(64)): RandomSource {
+    return drawSource({ serverSeed: this.opts.serverSeed, tournamentId: this.opts.tournamentId, purpose, publicEntropy });
   }
 
   addBot(playerId: PlayerId, strategy: BotStrategy): void {
@@ -169,7 +169,7 @@ export class SimulationHost {
     this.directorLog.push({ at: this.now, input });
     let tr;
     try {
-      tr = directorReduce(this.director, input, { now: this.now, drawSource: (p) => this.draw(p), index: this.index });
+      tr = directorReduce(this.director, input, { now: this.now, drawSource: (p, entropy) => this.draw(p, entropy), index: this.index });
     } catch (err) {
       this.index = buildTableIndex(this.director);
       throw err;

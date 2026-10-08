@@ -54,7 +54,7 @@ function seatFinalTable(d: Draft, pool: PendingMove[]): void {
   const plan = planFinalTable({
     players: pool.map((m) => ({ playerId: m.playerId, stack: m.stack ?? 0 })),
     maxSeats,
-    rng: d.ctx.drawSource('final-table'),
+    rng: d.ctx.drawSource('final-table', d.s.publicEntropy ?? ''),
   });
   // Old tables close (they are empty and held).
   for (const t of openTables(d)) {

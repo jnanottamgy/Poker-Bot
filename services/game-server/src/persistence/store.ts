@@ -6,6 +6,8 @@ import { AlertRepo } from './repos/alerts';
 import { AuditRepo } from './repos/audit';
 import { DirectorLogRepo, TableLogRepo } from './repos/logs';
 import { PlayerRepo } from './repos/players';
+import { OutboxRepo } from './repos/outbox';
+import { HandRepo } from './repos/hands';
 import { SessionRepo } from './repos/sessions';
 import { TournamentRepo } from './repos/tournaments';
 
@@ -19,6 +21,8 @@ export interface Repos {
   alerts: AlertRepo;
   tableLogs: TableLogRepo;
   directorLogs: DirectorLogRepo;
+  outbox: OutboxRepo;
+  hands: HandRepo;
   q: Queryable;
 }
 
@@ -32,6 +36,8 @@ export function bindRepos(q: Queryable): Repos {
     alerts: new AlertRepo(q),
     tableLogs: new TableLogRepo(q),
     directorLogs: new DirectorLogRepo(q),
+    outbox: new OutboxRepo(q),
+    hands: new HandRepo(q),
     q,
   };
 }
