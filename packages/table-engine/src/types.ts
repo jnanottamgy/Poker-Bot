@@ -29,10 +29,12 @@ export interface TurnState {
   /** Table version of the command that requested this decision; clients echo it as `tableStateVersion`. */
   turnVersion: number;
   requestedAt: EpochMs;
-  /** Visible deadline. Actions are accepted while `at <= deadline + actionGraceMs`. */
+  /** Visible deadline. Actions are accepted while `at <= deadline + graceMs`. */
   deadline: EpochMs;
   /** Timer length chosen when the turn started (actionTimerMs or awayActionTimerMs). */
   timerMs: number;
+  /** actionGraceMs pinned when the turn was (re-)armed: the hard cutoff is deadline + graceMs. */
+  graceMs: number;
   /** Token of the pending ACTION_TIMEOUT timer; any other token is stale. */
   timerToken: string;
   /** The away timer was used. */
@@ -50,7 +52,14 @@ export interface NextHandTimer {
 /** Emergency freeze: timers are suspended and the remaining times preserved. */
 export interface FrozenState {
   since: EpochMs;
+  /** Time that was left until the VISIBLE deadline of the running turn. */
   turnRemainingMs: number | null;
+  /**
+   * Grace that was left beyond the visible deadline. Together with
+   * turnRemainingMs this preserves the exact hard cutoff: a freeze never
+   * grants a fresh grace window (a player whose cutoff had passed stays out).
+   */
+  turnGraceRemainingMs: number | null;
   nextHandRemainingMs: number | null;
 }
 
@@ -69,7 +78,9 @@ export interface HandMeta {
   players: Array<{ seat: SeatIndex; playerId: PlayerId; displayName: string; publicId: string }>;
 }
 
+/** Idempotency record. Scoped per player: two players may legitimately use the same actionId. */
 export interface RecentAction {
+  playerId: PlayerId;
   actionId: ActionId;
   reply: CommandReply;
 }

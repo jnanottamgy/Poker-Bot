@@ -95,7 +95,14 @@ export function computePositions(state: BlindState, participants: readonly SeatI
   const bb = participantAfter(lastBB, participants);
   if (headsUp) {
     const other = participants[0] === bb ? (participants[1] as SeatIndex) : (participants[0] as SeatIndex);
-    return { buttonSeat: other, smallBlindPosition: other, smallBlindPosted: true, bigBlindSeat: bb, headsUp, firstHand: false };
+    return {
+      buttonSeat: other,
+      smallBlindPosition: other,
+      smallBlindPosted: true,
+      bigBlindSeat: bb,
+      headsUp,
+      firstHand: false,
+    };
   }
   const button = state.lastSmallBlindSeat ?? state.buttonSeat ?? participantBefore(lastBB, participants);
   return {

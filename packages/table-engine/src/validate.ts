@@ -33,10 +33,12 @@ export function maxSeatsProblem(maxSeats: unknown): string | null {
 export function timingProblem(t: unknown): string | null {
   if (!isObject(t)) return 'timing must be an object';
   if (!isInt(t.actionTimerMs, 1, MAX_TIMER_MS)) return 'timing.actionTimerMs must be an integer in [1, 86400000]';
-  if (!isInt(t.awayActionTimerMs, 1, MAX_TIMER_MS)) return 'timing.awayActionTimerMs must be an integer in [1, 86400000]';
+  if (!isInt(t.awayActionTimerMs, 1, MAX_TIMER_MS))
+    return 'timing.awayActionTimerMs must be an integer in [1, 86400000]';
   if (!isInt(t.awayAfterTimeouts, 1)) return 'timing.awayAfterTimeouts must be an integer >= 1';
   if (!isInt(t.actionGraceMs, 0, MAX_TIMER_MS)) return 'timing.actionGraceMs must be an integer in [0, 86400000]';
-  if (!isInt(t.betweenHandsDelayMs, 0, MAX_TIMER_MS)) return 'timing.betweenHandsDelayMs must be an integer in [0, 86400000]';
+  if (!isInt(t.betweenHandsDelayMs, 0, MAX_TIMER_MS))
+    return 'timing.betweenHandsDelayMs must be an integer in [0, 86400000]';
   if (!isInt(t.showdownDelayMs, 0, MAX_TIMER_MS)) return 'timing.showdownDelayMs must be an integer in [0, 86400000]';
   return null;
 }
@@ -47,7 +49,8 @@ export function blindsProblem(b: unknown): string | null {
   if (!isInt(b.bigBlind, 1)) return 'blinds.bigBlind must be a positive integer';
   if (!isInt(b.smallBlind, 0, b.bigBlind)) return 'blinds.smallBlind must be an integer in [0, bigBlind]';
   if (!isInt(b.ante, 0)) return 'blinds.ante must be a non-negative integer';
-  if (typeof b.anteType !== 'string' || !ANTE_TYPES.includes(b.anteType as AnteType)) return 'blinds.anteType is invalid';
+  if (typeof b.anteType !== 'string' || !ANTE_TYPES.includes(b.anteType as AnteType))
+    return 'blinds.anteType is invalid';
   return null;
 }
 
