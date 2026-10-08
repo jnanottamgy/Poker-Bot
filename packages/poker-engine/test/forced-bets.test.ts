@@ -256,17 +256,18 @@ describe('antes (rule 1)', () => {
 
   it('ALL_PLAYERS: unmatched part of an ante comes back with the uncalled bet when everyone else is all-in on partial antes', () => {
     const t = ring({ 0: 1000, 1: 5, 2: 8 }, { ante: 10, anteType: 'ALL_PLAYERS' });
-    // Both blinds are all-in from their antes; the nominal big blind still has to be called.
+    // Both blinds are all-in from their antes (nothing posted as blinds). The button
+    // already covers every opponent and nobody can bet against them, so betting is
+    // closed (rule 7) without prompting: no call-or-fold decision, no timeout forfeit.
     expect(t.ofKind('FORCED_BET_POSTED').map((e) => [e.seat, e.betType, e.amount])).toEqual([
       [1, 'ANTE', 5],
       [2, 'ANTE', 8],
       [0, 'ANTE', 10],
     ]);
-    expect(t.acting).toBe(0);
-    expect(getLegalActions(t.state)).toMatchObject({ callAmount: 100 });
-    t.act(0, { type: 'CALL' });
+    expect(t.ofKind('TURN_TO_ACT')).toHaveLength(0);
     expect(t.state.phase).toBe('HAND_COMPLETE');
-    expect(t.ofKind('UNCALLED_BET_RETURNED')[0]).toMatchObject({ seat: 0, amount: 102 });
+    expect(t.state.allInRunOut).toBe(true);
+    expect(t.ofKind('UNCALLED_BET_RETURNED')[0]).toMatchObject({ seat: 0, amount: 2 });
     expect(t.player(0)).toMatchObject({ totalContribution: 8, anteContribution: 8, streetContribution: 0 });
     const pots = t.ofKind('POT_AWARDED').map((p) => [p.potType, p.amount, p.eligibleSeats]);
     expect(pots).toEqual([

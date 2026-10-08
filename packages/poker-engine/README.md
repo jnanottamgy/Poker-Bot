@@ -235,16 +235,23 @@ minimum to 310.
 ### Round completion and run-outs (rule 7)
 
 The round is complete when no live player needs to act, or when at most one
-player can still act and that player has matched the current bet (nobody is
-left to bet against). If only one non-folded player remains, it is a fold win.
+player can still act and that player's street contribution is at least the
+highest street contribution of every other live (hence all-in) player: nobody
+is left to bet against and the player already covers everyone, so there is no
+decision to make. This equals "has matched the current bet" except preflop when
+the big blind is all-in for less than the nominal blind (see Contract note 14):
+e.g. blinds 50/100, the SB posts 50 and the BB is all-in for 30 — once nobody
+else can act, the SB is **not** prompted (a CHECK_ELSE_FOLD timeout would
+otherwise fold a covered hand); the board runs out and the unmatched 20 comes
+back as an uncalled bet. If only one non-folded player remains, it is a fold win.
 Otherwise the next street is dealt (burn + cards, `STREET_STARTED`), the
 street state resets (`currentBet = 0`, `minRaiseIncrement = bigBlind`,
 contributions/`actedThisStreet`/`lastAction` cleared) and, if a betting round
 opens, the first actor is prompted. If betting is already closed, the next
 street is dealt immediately (run-out) — every street in order, never skipped.
 `allInRunOut` is set when a round ends before the river with ≥ 2 live players
-and ≤ 1 who can act. A player facing a bet always acts, even if every opponent
-is all-in.
+and ≤ 1 who can act. A player facing a bet (an opponent's street contribution
+above their own) always acts, even if every opponent is all-in.
 
 ### Fold win (rule 8)
 
@@ -286,12 +293,14 @@ and is excluded from levels and from uncalled-bet detection.
   from the first live seat after the button.
 - **Otherwise**: the last aggressor of the river shows first (no river bet →
   the first live seat after the button), then clockwise. Each later player
-  shows only if their hand wins or ties at least one **contested** pot (≥ 2
-  eligible) they are eligible for, compared with the hands already shown among
-  that pot's eligible players; otherwise they muck (`cards: null`,
-  `mucked: true`, `hand: null`).
-- By construction every winner of a contested pot is revealed (the engine also
-  asserts it). Winning an uncontested pot never requires a show.
+  shows if they **win (or tie for) any pot** — contested or uncontested — or if
+  their hand wins or ties at least one **contested** pot (≥ 2 eligible) they are
+  eligible for, compared with the hands already shown among that pot's eligible
+  players; otherwise they muck (`cards: null`, `mucked: true`, `hand: null`).
+- Every pot winner is revealed ("players who win a pot are always revealed"),
+  including a player whose only win is a side pot nobody else is eligible for
+  (e.g. the others folded on the river); the engine asserts it. A fold win
+  (rule 8) has no showdown and shows nothing.
 - `HandResult.evaluated` holds every live hand including mucked ones; it is
   server-side data and must never be sent to other players.
 
@@ -373,12 +382,20 @@ tests:
   after every step, chip conservation, awarded = pot, folded players never win,
   winners hold the best hand among each pot's eligible players, phases follow
   the transition table, the event stream replays to the final state, dealing
-  follows `dealFromDeck`, and exact replay determinism.
+  follows `dealFromDeck`, and exact replay determinism;
+- `round-closure-and-reveals.test.ts`: short-big-blind round closure (heads-up,
+  3-handed, ALL_PLAYERS antes, plus guards that a player facing real chips is
+  still prompted) and a 3,000-hand fast-check property, biased to short stacks
+  and timeouts, asserting that a lone actor is only prompted when behind a live
+  opponent and that every showdown pot winner is revealed;
+- `adversarial-*.test.ts`: independent adversarial suites (betting rules,
+  illegal inputs, pots, evaluator, showdown) including an independent betting
+  model replaying thousands of random hands against the engine's event stream.
 
 ## Contract notes
 
-Clarifications of CONTRACTS.md §3 (no contract conflicts; these pin down
-behaviour the contract leaves open):
+Clarifications of CONTRACTS.md §3. These pin down behaviour the contract leaves
+open; note 14 resolves an ambiguity in rule 7's wording:
 
 1. **ALL_IN when raising is closed.** ALL_IN is legal only when it would be a
    call, a bet, or a raise that is open to the player. After an incomplete
@@ -406,15 +423,32 @@ behaviour the contract leaves open):
 9. **BETTING_ROUND_COMPLETE** is emitted only for streets whose betting round
    actually opened (not for run-out streets, nor when betting is closed right
    after the forced bets).
-10. **Showdown**: only contested pots count for "can win or tie"; an all-in that
+10. **Showdown**: only contested pots count for "can win or tie" against shown
+    hands, but every pot winner (contested or not) is revealed; an all-in that
     is called on the river is not an all-in run-out (betting completed on the
     river), so the normal order applies; all-in reveal order is clockwise from
     the first live seat after the button.
 11. **Forced bets**: ALL_PLAYERS antes post in dealing order; zero-amount posts
     are skipped; with `anteType: 'NONE'` a configured ante is ignored. Because
-    the current bet is always the nominal big blind, a player may have to call
-    it even when both blinds are all-in for less (the excess is returned).
+    the current bet is always the nominal big blind, a player who is behind a
+    live opponent must call it in full even when both blinds are all-in for
+    less (the excess is returned). A lone actor who already covers every live
+    opponent is not prompted at all (note 14).
 12. **Royal flush** shares the score of an ace-high straight flush.
 13. **Pot type** `Pot`, `HandState`, `CreateHandInput` and the result types are
     defined in this package (the contract names them in §3). `distributePots`
     takes `{ pots, scores, buttonSeat, maxSeats }`. No shared-types changes.
+14. **Rule 7 "matched the current bet" with a short big blind.** The nominal
+    preflop current bet (rule 2) can exceed every chip actually in front of the
+    opponents when the big blind is all-in for less. For the "at most one player
+    can still act" clause, "matched" is measured against the highest street
+    contribution of the other live players, not the nominal bet. Otherwise a
+    small blind of 50 facing a big blind all-in for 30 (heads-up, after the other
+    players fold, or after ALL_PLAYERS antes left the BB short) would be asked to
+    call or fold with nothing to decide, and a timeout would fold a covered hand.
+    The contract text should be read as "matched every live opponent"; the two
+    readings coincide in every other situation. (Fixed after adversarial review.)
+15. **Rule 11 "players who win a pot are always revealed"** applies to
+    uncontested side pots as well: a player whose hand loses the main pot but
+    who is the only eligible player for a side pot (the others folded) is shown.
+    (Fixed after adversarial review; earlier versions mucked such a player.)

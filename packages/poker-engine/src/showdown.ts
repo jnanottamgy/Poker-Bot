@@ -29,12 +29,11 @@ export interface ShowdownOutcome {
  *   the first live seat after the button;
  * - otherwise the last aggressor of the final betting round shows first (or,
  *   with no river bet, the first live seat after the button); then clockwise
- *   each player shows only if their hand wins or ties at least one CONTESTED
- *   pot (two or more eligible players) they are eligible for, compared with
- *   the hands already shown among that pot's eligible players; otherwise they
- *   muck (cards stay private).
- * By construction every winner of a contested pot is revealed; uncontested
- * pots never require a show.
+ *   each player shows if they win at least one pot (contested or not: "players
+ *   who win a pot are always revealed"), or if their hand wins or ties at least
+ *   one CONTESTED pot (two or more eligible players) they are eligible for,
+ *   compared with the hands already shown among that pot's eligible players;
+ *   otherwise they muck (cards stay private).
  */
 export function revealOrder(input: ShowdownInput): SeatIndex[] {
   const seats = input.live.map((p) => p.seat);
@@ -47,6 +46,25 @@ export function revealOrder(input: ShowdownInput): SeatIndex[] {
   return [...clockwise.slice(start), ...clockwise.slice(0, start)];
 }
 
+/**
+ * Seats that win (or tie for) at least one pot: the best score among each
+ * pot's eligible players. A pot with a single eligible player is won by that
+ * player uncontested.
+ */
+function potWinnerSeats(pots: readonly Pot[], hands: ReadonlyMap<SeatIndex, EvaluatedHand>): Set<SeatIndex> {
+  const winners = new Set<SeatIndex>();
+  for (const pot of pots) {
+    const score = (s: SeatIndex): number => {
+      const hand = hands.get(s);
+      if (hand === undefined) throw new Error(`Seat ${s} is eligible for a pot but has no live hand`);
+      return hand.score;
+    };
+    const best = Math.max(...pot.eligibleSeats.map(score));
+    for (const s of pot.eligibleSeats) if (score(s) === best) winners.add(s);
+  }
+  return winners;
+}
+
 export function resolveShowdown(input: ShowdownInput): ShowdownOutcome {
   const bySeat = new Map(input.live.map((p) => [p.seat, p]));
   const hands = new Map<SeatIndex, EvaluatedHand>();
@@ -55,6 +73,7 @@ export function resolveShowdown(input: ShowdownInput): ShowdownOutcome {
     hands.set(p.seat, evaluateHand([...p.holeCards, ...input.board]));
   }
   const contested = input.pots.filter((pot) => pot.eligibleSeats.length >= 2);
+  const winners = potWinnerSeats(input.pots, hands);
   const shown = new Set<SeatIndex>();
   const reveals: ShowdownReveal[] = [];
 
@@ -64,6 +83,7 @@ export function resolveShowdown(input: ShowdownInput): ShowdownOutcome {
     const mustShow =
       input.revealAll ||
       shown.size === 0 ||
+      winners.has(seat) ||
       contested.some((pot) => {
         if (!pot.eligibleSeats.includes(seat)) return false;
         const rivals = pot.eligibleSeats.filter((s) => shown.has(s));
@@ -77,14 +97,9 @@ export function resolveShowdown(input: ShowdownInput): ShowdownOutcome {
     }
   }
 
-  // Programmer-bug guard: a contested-pot winner must never be mucked.
-  for (const pot of contested) {
-    const best = Math.max(...pot.eligibleSeats.map((s) => (hands.get(s) as EvaluatedHand).score));
-    for (const s of pot.eligibleSeats) {
-      if ((hands.get(s) as EvaluatedHand).score === best && !shown.has(s)) {
-        throw new Error(`Invariant: pot winner at seat ${s} was mucked`);
-      }
-    }
+  // Programmer-bug guard: a pot winner must never be mucked.
+  for (const s of winners) {
+    if (!shown.has(s)) throw new Error(`Invariant: pot winner at seat ${s} was mucked`);
   }
 
   return {

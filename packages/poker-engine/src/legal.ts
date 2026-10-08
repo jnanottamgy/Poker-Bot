@@ -23,16 +23,33 @@ export function needsToAct(state: HandState, p: HandPlayerState): boolean {
 }
 
 /**
+ * Highest street contribution among the live players other than `p`: the
+ * amount `p` must have put in to cover every opponent still in the hand.
+ */
+function highestOpponentContribution(live: readonly HandPlayerState[], p: HandPlayerState): number {
+  return live.reduce((max, o) => (o === p ? max : Math.max(max, o.streetContribution)), 0);
+}
+
+/**
  * Rule 7. The round is complete when no live player needs to act. Betting is
  * also closed when at most one player can still act and that player has
- * matched the current bet (nobody is left to bet against).
+ * matched every live opponent's street contribution: nobody is left to bet
+ * against and the player already covers everyone, so there is no decision.
+ *
+ * The comparison is with what the (all-in) opponents actually put in, not with
+ * the nominal `currentBet`. The two differ only preflop when the big blind is
+ * all-in for less than the nominal blind; there, e.g. a small blind of 50
+ * facing a big blind all-in for 30 has nothing to call (the excess 20 comes
+ * back as an uncalled bet) and must not be asked to "call or fold" — a timeout
+ * (CHECK_ELSE_FOLD) would otherwise forfeit a covered hand.
  */
 export function isRoundComplete(state: HandState): boolean {
   const live = livePlayers(state);
   if (live.length <= 1) return true;
   const actors = live.filter(canAct);
   if (actors.length === 0) return true;
-  if (actors.length === 1 && (actors[0] as HandPlayerState).streetContribution >= state.currentBet) return true;
+  const lone = actors.length === 1 ? (actors[0] as HandPlayerState) : null;
+  if (lone !== null && lone.streetContribution >= highestOpponentContribution(live, lone)) return true;
   return !actors.some((p) => needsToAct(state, p));
 }
 
