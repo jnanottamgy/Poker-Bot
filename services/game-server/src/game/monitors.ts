@@ -30,6 +30,7 @@ export class HealthMonitor {
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<void> | null = null;
   private readonly stalled = new Set<string>();
+  private readonly integrityFailed = new Set<string>();
   private latencyAlerted = false;
 
   constructor(
@@ -59,7 +60,11 @@ export class HealthMonitor {
     const overdue = this.opts.overdueTimerMs ?? 3000;
     for (const tournamentId of host.hostedIds('director')) {
       if (!host.isActive('director', tournamentId)) continue;
-      const h = await this.game.directorQuery<{ nextTickAt: number | null }>(tournamentId, { q: 'HEALTH' }).catch(() => null);
+      const h = await this.game.directorQuery<{ nextTickAt: number | null; integrityOk: boolean }>(tournamentId, { q: 'HEALTH' }).catch(() => null);
+      if (h && !h.integrityOk && !this.integrityFailed.has(tournamentId)) {
+        this.integrityFailed.add(tournamentId);
+        this.metrics?.integrityViolations.inc({ code: 'CHIP_CONSERVATION' });
+      } else if (h?.integrityOk) this.integrityFailed.delete(tournamentId);
       if (h?.nextTickAt !== null && h?.nextTickAt !== undefined && now - h.nextTickAt > overdue) {
         this.logger?.warn({ tournamentId }, 'director tick overdue: re-submitting');
         await this.game.node.submit('director', tournamentId, { kind: 'TICK' }).catch(() => undefined);
@@ -88,6 +93,7 @@ export class HealthMonitor {
         await this.game.store.repos.alerts.resolveByCode(tournamentId, 'TABLE_STALLED', `table:${tableId}`).catch(() => undefined);
       }
     }
+    this.metrics?.tablesStalled.set(this.stalled.size);
     if (this.metrics) {
       const p = this.metrics.windows.actionLatency.percentiles();
       const high = p.count >= 20 && p.p95 > this.opts.actionLatencyAlertMs;

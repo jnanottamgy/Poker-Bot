@@ -53,6 +53,8 @@ export class LiveMetricsSampler {
     for (const t of live) {
       const summary = await this.game.tournamentSummary(t.id).catch(() => null);
       if (!summary) continue;
+      this.metrics.activePlayers.set(summary.counters.active, { tournament: t.id });
+      this.metrics.activeTables.set(summary.counters.tables, { tournament: t.id });
       const list = this.series.get(t.id) ?? [];
       const hands = summary.counters.handsCompleted;
       // Hands/min from the sample about a minute ago.

@@ -169,6 +169,17 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
   await runtime.start();
   live.start();
   monitor.start();
+  // Redis round trip, for the dashboards (multi-node only).
+  const redisProbe = redis
+    ? setInterval(() => {
+        const t0 = performance.now();
+        redis.ping().then(
+          () => metrics.redisLatency.observe(performance.now() - t0),
+          () => metrics.errors.inc({ area: 'redis' }),
+        );
+      }, 5000)
+    : null;
+  redisProbe?.unref();
 
   const server: JpbServer = {
     env,
@@ -186,6 +197,7 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
       return address;
     },
     async close() {
+      if (redisProbe) clearInterval(redisProbe);
       await demos.shutdown();
       await live.stop();
       await monitor.stop();
@@ -196,6 +208,7 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
       if (!opts.db) await store.close();
     },
     async crash() {
+      if (redisProbe) clearInterval(redisProbe);
       for (const c of gateway?.connections() ?? []) c.socket.terminate();
       await demos.shutdown();
       await live.stop();

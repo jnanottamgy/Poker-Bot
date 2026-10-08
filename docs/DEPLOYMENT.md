@@ -76,7 +76,7 @@ account plus a domain you own.)
 | Stop everything | `docker compose down` (data is kept in the `pgdata` volume) |
 | Backups | automatic hourly `pg_dump` into `./backups` (kept 14 days) |
 | Restore a backup | `docker compose exec -T postgres pg_restore -U jpb -d jpb --clean < backups/jpb-<timestamp>.dump` |
-| Monitoring | `docker compose --profile monitoring up -d` → Grafana on `http://127.0.0.1:3000` |
+| Monitoring | `docker compose --profile monitoring up -d` → Grafana on `http://127.0.0.1:3000` (dashboard "Johnny's Poker Bot — live"; Prometheus alert rules in `infra/monitoring/alerts.yml`) |
 
 ### Crash recovery
 

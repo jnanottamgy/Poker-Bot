@@ -6,9 +6,9 @@ rule_files:
 scrape_configs:
   - job_name: johnnys-poker-bot
     metrics_path: /metrics
-    # Set METRICS_TOKEN in .env and paste it here (Prometheus does not expand env vars in this file).
+    # The token file is written by scripts/setup-env.mjs (same value as METRICS_TOKEN in .env).
     authorization:
       type: Bearer
-      credentials: REPLACE_WITH_METRICS_TOKEN
+      credentials_file: /etc/prometheus/metrics_token
     static_configs:
       - targets: ['app:8080']
