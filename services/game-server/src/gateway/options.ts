@@ -30,7 +30,11 @@ export const CLOSE_CODES = {
 } as const;
 
 export interface GatewayOptions {
-  /** The first frame must be `hello` within this time. */
+  /**
+   * The first frame must be `hello` within this time, and the socket must be
+   * authorized and have its first snapshot within the same time after the
+   * hello arrived (a hello stuck in the backend never holds a socket open).
+   */
   helloTimeoutMs: number;
   /** Largest accepted client frame (bytes). Larger frames get an error frame and are ignored. */
   maxFrameBytes: number;
@@ -53,8 +57,18 @@ export interface GatewayOptions {
   closeBufferBytes: number;
   /** While stale, how often to check whether the buffer drained. */
   drainCheckMs: number;
-  /** Sessions are re-validated this often (revocation, disabled admins, role changes). */
+  /** Sessions and spectator/display eligibility are re-validated this often (revocation, disabled admins, role changes, policy changes). */
   sessionRecheckMs: number;
+  /**
+   * An admin socket receiving live hole cards re-validates its session before
+   * every revealed frame; at most this long after the last check the session
+   * cache is bypassed (a revocation on another node is seen within this time).
+   */
+  revealRecheckMs: number;
+  /** Open sockets per node; further upgrades get 503 so the load balancer tries another node. */
+  maxConnectionsPerNode: number;
+  /** Open sockets per client IP without a player or admin session (spectators, displays); generous for venue NAT. */
+  maxAnonymousConnectionsPerIp: number;
   /** How long the per-tournament spectator delay value is cached. */
   delayCacheMs: number;
   /** Rate-limited frames beyond this count close the socket (1008). */
@@ -82,6 +96,9 @@ export const DEFAULT_GATEWAY_OPTIONS: GatewayOptions = {
   closeBufferBytes: 8 * 1024 * 1024,
   drainCheckMs: 250,
   sessionRecheckMs: 60_000,
+  revealRecheckMs: 2_000,
+  maxConnectionsPerNode: 50_000,
+  maxAnonymousConnectionsPerIp: 1_000,
   delayCacheMs: 5_000,
   maxRateLimitViolations: 50,
   extraAllowedOrigins: [],

@@ -16,10 +16,17 @@ pg.types.setTypeParser(20, (v: string) => {
 
 export type Queryable = Pick<pg.PoolClient, 'query'>;
 
+export interface DatabaseOptions {
+  searchPath?: string;
+  /** A connection died (server restart, failover, idle kill). Informational: the pool already discarded it. */
+  onConnectionError?: (err: Error) => void;
+}
+
 export class Database {
   readonly pool: pg.Pool;
+  private readonly onConnectionError: (err: Error) => void;
 
-  constructor(connectionString: string, max = 20, opts: { searchPath?: string } = {}) {
+  constructor(connectionString: string, max = 20, opts: DatabaseOptions = {}) {
     if (opts.searchPath !== undefined && !/^[a-z_][a-z0-9_]*$/.test(opts.searchPath)) throw new Error('Invalid schema name');
     this.pool = new pg.Pool({
       connectionString,
@@ -28,6 +35,10 @@ export class Database {
       connectionTimeoutMillis: 10_000,
       ...(opts.searchPath ? { options: `-c search_path=${opts.searchPath}` } : {}),
     });
+    this.onConnectionError = opts.onConnectionError ?? (() => undefined);
+    // pg emits 'error' when a backend dies; an 'error' event without a listener
+    // is an uncaught exception that would kill the whole node.
+    this.pool.on('error', (err) => this.onConnectionError(err));
   }
 
   query<R extends pg.QueryResultRow = pg.QueryResultRow>(text: string, values?: unknown[]): Promise<pg.QueryResult<R>> {
@@ -37,16 +48,27 @@ export class Database {
   /** Runs `fn` inside one transaction (all-or-nothing, spec §63). */
   async transaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
+    // pg-pool removes its own 'error' listener while a client is checked out.
+    let broken: Error | undefined;
+    const onError = (err: Error) => {
+      broken ??= err;
+      this.onConnectionError(err);
+    };
+    client.on('error', onError);
     try {
       await client.query('BEGIN');
       const result = await fn(client);
       await client.query('COMMIT');
       return result;
     } catch (err) {
-      await client.query('ROLLBACK').catch(() => undefined);
+      await client.query('ROLLBACK').catch((rollbackErr: unknown) => {
+        broken ??= rollbackErr instanceof Error ? rollbackErr : new Error(String(rollbackErr));
+      });
       throw err;
     } finally {
-      client.release();
+      // A connection whose ROLLBACK failed or that errored is destroyed, never pooled again.
+      client.release(broken);
+      client.removeListener('error', onError);
     }
   }
 

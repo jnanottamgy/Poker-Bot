@@ -8,8 +8,9 @@ import type { ActorTransaction } from './transactions';
  * the host's unit of work; reads happen outside it (recovery).
  *
  * `append` MUST throw DuplicateSequenceError when the (actor, seq) pair — or
- * the command's idempotency key — already exists: that is the fencing
- * mechanism against a stale owner.
+ * the command's idempotency key, or its commandId — already exists: that is
+ * the fencing mechanism against a stale owner, and the durable guard against
+ * a routed request (commandId = correlationId) being applied twice.
  */
 export interface ActorLog<M = unknown> {
   append(tx: ActorTransaction, actorId: string, command: LoggedCommand, events: LoggedEvent[], meta: M): Promise<void>;
@@ -29,6 +30,7 @@ interface MemoryStream {
   events: LoggedEvent[];
   snapshots: Snapshot[];
   actionIds: Set<string>;
+  commandIds: Set<string>;
 }
 
 /** JSON round trip: the same normalization PostgreSQL JSONB applies, and isolation from callers. */
@@ -36,7 +38,7 @@ const jsonCopy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 /**
  * In-memory log with the same contract as the PostgreSQL ones (gap-free seq,
- * unique action ids, rollback via undo hooks). For unit tests and benchmarks.
+ * unique action ids and command ids, rollback via undo hooks). For unit tests and benchmarks.
  */
 export class MemoryActorLog<M = unknown> implements ActorLog<M> {
   private readonly streams = new Map<string, MemoryStream>();
@@ -46,7 +48,7 @@ export class MemoryActorLog<M = unknown> implements ActorLog<M> {
   private stream(actorId: string): MemoryStream {
     let s = this.streams.get(actorId);
     if (!s) {
-      s = { commands: [], events: [], snapshots: [], actionIds: new Set() };
+      s = { commands: [], events: [], snapshots: [], actionIds: new Set(), commandIds: new Set() };
       this.streams.set(actorId, s);
     }
     return s;
@@ -57,14 +59,17 @@ export class MemoryActorLog<M = unknown> implements ActorLog<M> {
     const last = s.commands[s.commands.length - 1];
     if (last && command.seq <= last.seq) throw new DuplicateSequenceError(`actor ${actorId}`, command.seq);
     if (command.actionId !== null && s.actionIds.has(command.actionId)) throw new DuplicateSequenceError(`actor ${actorId}`, command.seq);
+    if (s.commandIds.has(command.commandId)) throw new DuplicateSequenceError(`actor ${actorId}`, command.seq);
     s.commands.push(jsonCopy(command));
     if (command.actionId !== null) s.actionIds.add(command.actionId);
+    s.commandIds.add(command.commandId);
     for (const e of events) s.events.push(jsonCopy(e));
     const previousMeta = this.lastMeta.get(actorId);
     this.lastMeta.set(actorId, meta);
     tx.onRollback(() => {
       s.commands.pop();
       if (command.actionId !== null) s.actionIds.delete(command.actionId);
+      s.commandIds.delete(command.commandId);
       s.events.length -= events.length;
       if (previousMeta === undefined) this.lastMeta.delete(actorId);
       else this.lastMeta.set(actorId, previousMeta);

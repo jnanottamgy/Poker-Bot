@@ -108,7 +108,32 @@ export function noopResult<S, R>(state: S, reply: R): StepResult<S, R> {
   return { ...stepResult(state, reply), noop: true };
 }
 
-export const poolOf = (def: Pick<AnyActorDefinition, 'kind' | 'pool'>): ActorPool => def.pool ?? (def.kind === 'director' ? 'orchestrator' : 'worker');
+/**
+ * Structural invariants of a step result, enforced live (a violation faults
+ * the actor) and on replay (a violation fails recovery): well-formed effect
+ * lists, a noop without effects, a gap-free event stream when `eventSeqOf` is
+ * defined, and valid timer requests.
+ */
+export function checkStepResult<S>(def: Pick<AnyActorDefinition, 'eventSeqOf'>, prev: S, r: StepResult<S, unknown>): void {
+  if (!r || !Array.isArray(r.events) || !Array.isArray(r.timers) || !Array.isArray(r.cancelTimers) || !Array.isArray(r.outbox)) {
+    throw new Error('step returned a malformed result');
+  }
+  if (r.noop) {
+    if (r.events.length || r.timers.length || r.cancelTimers.length || r.outbox.length || r.projection) throw new Error('noop result carries effects');
+    return;
+  }
+  let last: number = def.eventSeqOf ? def.eventSeqOf(prev) : (r.events[0]?.seq ?? 1) - 1;
+  for (const e of r.events) {
+    if (e.seq !== last + 1) throw new Error(`event seq ${e.seq} breaks the gap-free stream (expected ${last + 1})`);
+    last = e.seq;
+  }
+  if (def.eventSeqOf && def.eventSeqOf(r.state) !== last) throw new Error(`state event seq ${def.eventSeqOf(r.state)} does not match last event ${last}`);
+  for (const t of r.timers) {
+    if (!t.key || !Number.isFinite(t.at)) throw new Error(`invalid timer request ${JSON.stringify(t)}`);
+  }
+}
+
+export const poolOf =(def: Pick<AnyActorDefinition, 'kind' | 'pool'>): ActorPool => def.pool ?? (def.kind === 'director' ? 'orchestrator' : 'worker');
 
 export function commandChannelOf(def: Pick<AnyActorDefinition, 'kind' | 'commandChannel'>, actorId: string): string {
   if (def.commandChannel) return def.commandChannel(actorId);

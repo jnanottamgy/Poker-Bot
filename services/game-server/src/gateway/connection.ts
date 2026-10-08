@@ -51,6 +51,14 @@ export class Connection {
   lastSeenAt: number;
   lastAuthCheckAt: number;
   helloTimer: NodeJS.Timeout | null = null;
+  /** The first (and only) hello frame arrived; the audience is set once it is authorized. */
+  helloReceived = false;
+  /** Hello was processed and the first snapshot sent (ends the hello deadline). */
+  ready = false;
+  /** Last time a revealed admin socket re-validated its session bypassing the session cache. */
+  lastRevealCheckAt = 0;
+  /** Opened without a player or admin session (counted against the per-IP anonymous limit). */
+  readonly anonymous: boolean;
   /** Set once close was requested; no more frames are written. */
   closing = false;
   /** Set once the socket closed and the gateway cleaned up. */
@@ -80,6 +88,7 @@ export class Connection {
   ) {
     this.lastSeenAt = now;
     this.lastAuthCheckAt = now;
+    this.anonymous = !principal.player && !principal.admin;
     this.messageLimiter = new RateLimiter(opts.limits.message, 1);
     this.actionLimiter = new RateLimiter(opts.limits.action, 1);
     this.snapshotLimiter = new RateLimiter(opts.limits.snapshot, 1);

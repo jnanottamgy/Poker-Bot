@@ -2,11 +2,15 @@ import type { Redis } from 'ioredis';
 
 /**
  * Ownership leases: exactly one node runs a given table actor or tournament
- * director at a time (spec §30/§31). A lease has an owner token and a
- * monotonically increasing epoch (fencing token). Losing a lease means the
- * node must stop processing that actor immediately; the command log's
- * gap-free (resource, seq) primary key provides a second line of defence
- * against split-brain writes.
+ * director at a time (spec §30/§31). A lease has an owner token and an epoch
+ * that identifies the lease generation and increases with every new owner.
+ * Losing a lease means the node must stop processing that actor immediately.
+ *
+ * The epoch is NOT the fencing mechanism: the command log's gap-free
+ * (resource, seq) primary key is. With Redis the epoch stays increasing even
+ * after Redis loses its data: a new epoch is never below the Redis server
+ * time in µs (< 2^53 until the year 2255), and one acquisition takes longer
+ * than 1 µs — assuming the Redis server clock does not step backwards.
  */
 export interface Lease {
   resource: string;
@@ -64,9 +68,13 @@ if cur then
   redis.call('SET', KEYS[1], ARGV[1] .. '|' .. epoch, 'PX', ARGV[2])
   return tonumber(epoch)
 end
-local epoch = redis.call('INCR', KEYS[2])
+local t = redis.call('TIME')
+local floor = tonumber(t[1]) * 1000000 + tonumber(t[2])
+local last = tonumber(redis.call('GET', KEYS[2]) or '0')
+local epoch = string.format('%d', math.max(last + 1, floor))
+redis.call('SET', KEYS[2], epoch)
 redis.call('SET', KEYS[1], ARGV[1] .. '|' .. epoch, 'PX', ARGV[2])
-return epoch
+return tonumber(epoch)
 `;
 
 const RENEW_LUA = `

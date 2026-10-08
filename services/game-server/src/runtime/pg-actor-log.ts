@@ -6,7 +6,15 @@ import type { ActorTransaction } from './transactions';
 /**
  * PostgreSQL actor logs backed by the existing repositories. Reads use the
  * pool-bound repos given to the constructor; writes use the transaction's.
+ *
+ * Snapshot state is stored as JSON text (a JSONB string) rather than as a
+ * JSONB object: JSONB reorders object keys, and a state restored from a
+ * snapshot must iterate exactly like the live state it was taken from.
+ * (Commands stay JSONB objects; the host canonicalizes their key order.)
  */
+const encodeState = (state: unknown): string => JSON.stringify(state);
+/** Rows written before this encoding hold the object itself. */
+const decodeState = (stored: unknown): unknown => (typeof stored === 'string' ? (JSON.parse(stored) as unknown) : stored);
 
 /** Columns of the `tables` row maintained with every table command. */
 export interface TableLogMeta {
@@ -27,11 +35,12 @@ export class PostgresTableLog implements ActorLog<TableLogMeta> {
   }
 
   async saveSnapshot(tx: ActorTransaction, actorId: string, snapshot: Snapshot): Promise<void> {
-    await tx.repos.tableLogs.saveSnapshot(actorId, snapshot);
+    await tx.repos.tableLogs.saveSnapshot(actorId, { ...snapshot, state: encodeState(snapshot.state) });
   }
 
-  latestSnapshot(actorId: string): Promise<Snapshot | null> {
-    return this.repos.tableLogs.latestSnapshot(actorId);
+  async latestSnapshot(actorId: string): Promise<Snapshot | null> {
+    const s = await this.repos.tableLogs.latestSnapshot(actorId);
+    return s ? { ...s, state: decodeState(s.state) } : null;
   }
 
   commandsAfter(actorId: string, afterSeq: number, limit: number): Promise<LoggedCommand[]> {
@@ -75,12 +84,12 @@ export class PostgresDirectorLog implements ActorLog<unknown> {
   }
 
   async saveSnapshot(tx: ActorTransaction, actorId: string, snapshot: Snapshot): Promise<void> {
-    await tx.repos.directorLogs.saveSnapshot(actorId, { inputSeq: snapshot.commandSeq, at: snapshot.at, state: snapshot.state });
+    await tx.repos.directorLogs.saveSnapshot(actorId, { inputSeq: snapshot.commandSeq, at: snapshot.at, state: encodeState(snapshot.state) });
   }
 
   async latestSnapshot(actorId: string): Promise<Snapshot | null> {
     const s = await this.repos.directorLogs.latestSnapshot(actorId);
-    return s ? { commandSeq: s.inputSeq, version: s.inputSeq, at: s.at, state: s.state } : null;
+    return s ? { commandSeq: s.inputSeq, version: s.inputSeq, at: s.at, state: decodeState(s.state) } : null;
   }
 
   async commandsAfter(actorId: string, afterSeq: number, limit: number): Promise<LoggedCommand[]> {

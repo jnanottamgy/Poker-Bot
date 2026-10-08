@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+
 /**
  * Time source and timer scheduling for the runtime shell. Production uses the
  * system clock; tests drive a ManualClock so timer, lease and recovery
@@ -6,7 +8,10 @@
 export type ClockTimer = { readonly __clockTimer: true };
 
 export interface Clock {
+  /** Wall time (epoch ms): envelope `at`, timer deadlines. May step backwards (NTP). */
   now(): number;
+  /** Monotonic ms for measuring elapsed time (lease validity); never affected by wall-clock steps. */
+  monotonic(): number;
   setTimeout(fn: () => void, delayMs: number): ClockTimer;
   clearTimeout(timer: ClockTimer): void;
 }
@@ -16,6 +21,7 @@ export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export const systemClock: Clock = {
   now: () => Date.now(),
+  monotonic: () => performance.now(),
   setTimeout(fn, delayMs) {
     const t = setTimeout(fn, Math.min(Math.max(0, delayMs), MAX_TIMER_DELAY_MS));
     // Runtime timers never keep the process alive on their own (the HTTP server does).
@@ -49,6 +55,11 @@ export class ManualClock implements Clock {
   }
 
   now(): number {
+    return this.t;
+  }
+
+  /** Manual time only moves forward, so it is monotonic too. */
+  monotonic(): number {
     return this.t;
   }
 
