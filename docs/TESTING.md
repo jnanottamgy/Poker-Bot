@@ -96,7 +96,25 @@ generator, PostgreSQL and the server on the same machine — a pessimistic
 setup). Run the load test on your own hardware before an event; never assume
 these numbers.
 
-MEASURED_RESULTS_PLACEHOLDER
+**1,000 players** (125 tables, speed blinds, bots thinking 0.2–1.2 s, one
+WebSocket each; `--players 1000 --concurrency 60 --think 200-1200`):
+
+| Measure | First run | After the fan-out fix |
+| --- | --- | --- |
+| Result | completed, 904 hands in 240 s | completed, 860 hands in 237 s |
+| Errors / unexpected disconnects | 0 / 0 | 0 / 0 |
+| Registration (incl. rejoin-code hashing), p50 / p95 | 1.3 s / 2.0 s | 1.0 s / 1.9 s |
+| Connect → authoritative snapshot, p50 / p95 / p99 | 97 / 120 / 145 ms | 79 / 100 / 124 ms |
+| Action round trip (send → durable ack), p50 / p95 / p99 | 16 / 93 / 199 ms | **6 / 28 / 76 ms** |
+| Frames sent to players | 2.6 million (≈ 4 GB) | 463 thousand (≈ 850 MB) |
+
+The first run showed every tournament-wide event (each elimination, move and
+registration) being pushed to every phone — quadratic in the field size. In
+fields above 300 players, players and spectators now get one coalesced
+summary per second instead (admins and the big screen keep the full feed).
+
+Registration latency is dominated by the deliberately slow, memory-hard
+hashing of each player's rejoin code, queued so it never starves the server.
 
 ## Simulation
 

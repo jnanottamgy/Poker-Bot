@@ -67,6 +67,10 @@ const ADMIN_ONLY_TOURNAMENT_EVENTS = new Set(['INTEGRITY_ALERT']);
  */
 const HIGH_VOLUME_TOURNAMENT_EVENTS = new Set(['PLAYER_REGISTERED', 'PLAYER_ELIMINATED', 'TABLE_MOVE', 'TABLE_CREATED', 'TABLE_BROKEN', 'COUNTERS']);
 export const FULL_FEED_MAX_PLAYERS = 300;
+/** High-volume event? Also the per-table-break "tables reduced to N" milestones (one per closed table). */
+function isHighVolume(event: TournamentEventMessage['envelope']['event']): boolean {
+  return HIGH_VOLUME_TOURNAMENT_EVENTS.has(event.kind) || (event.kind === 'MILESTONE' && event.code.startsWith('TABLES_'));
+}
 const SUMMARY_COALESCE_MS = 1000;
 
 const NOOP_LOG: GatewayLogger = { warn: () => undefined, error: () => undefined };
@@ -855,7 +859,7 @@ export class Gateway {
     const conns = this.byTournament.get(msg.tournamentId);
     if (!conns || conns.size === 0) return;
     const adminOnly = ADMIN_ONLY_TOURNAMENT_EVENTS.has(msg.envelope.event.kind);
-    const coalesce = HIGH_VOLUME_TOURNAMENT_EVENTS.has(msg.envelope.event.kind) && msg.summary.counters.registered > FULL_FEED_MAX_PLAYERS;
+    const coalesce = isHighVolume(msg.envelope.event) && msg.summary.counters.registered > FULL_FEED_MAX_PLAYERS;
     const shared = tournamentFrame(msg, this.now());
     let delayed = false;
     for (const c of conns) {
@@ -877,7 +881,7 @@ export class Gateway {
     if (!this.delayedSockets.get(tid)) return;
     const prev = this.releasedSummaries.get(tid);
     if (!prev || prev.lastSeq <= msg.summary.lastSeq) this.releasedSummaries.set(tid, msg.summary);
-    const coalesce = HIGH_VOLUME_TOURNAMENT_EVENTS.has(msg.envelope.event.kind) && msg.summary.counters.registered > FULL_FEED_MAX_PLAYERS;
+    const coalesce = isHighVolume(msg.envelope.event) && msg.summary.counters.registered > FULL_FEED_MAX_PLAYERS;
     const f = tournamentFrame(msg, this.now());
     for (const c of this.byTournament.get(tid) ?? []) {
       // The broadcast display keeps the full feed (its ticker); spectators get the coalesced summary.
