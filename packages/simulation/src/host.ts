@@ -12,7 +12,7 @@ import type {
   TournamentEvent,
 } from '@jpb/shared-types';
 import { checkTableInvariants, createTableState, reduceTable } from '@jpb/table-engine';
-import type { TableState } from '@jpb/table-engine';
+import type { CreateTableInput, TableState } from '@jpb/table-engine';
 import { buildTableIndex, createDirectorState, directorReduce } from '@jpb/tournament-engine';
 import type { DirectorEffect, DirectorInput, DirectorReply, DirectorState } from '@jpb/tournament-engine';
 import type { TableCountIndex } from '@jpb/balancing-engine';
@@ -67,6 +67,8 @@ export class SimulationHost {
   director: DirectorState;
   readonly tables = new Map<TableId, TableState>();
   readonly tableLogs = new Map<TableId, TableCommandEnvelope[]>();
+  /** createTableState inputs per table (for replay). */
+  readonly tableInits = new Map<TableId, CreateTableInput>();
   readonly directorLog: Array<{ at: number; input: DirectorInput }> = [];
   readonly tournamentEvents: TournamentEvent[] = [];
   readonly tableEvents: TableEvent[] = [];
@@ -75,6 +77,8 @@ export class SimulationHost {
   readonly stats: HostStats = { directorInputs: 0, tableCommands: 0, actions: 0, rejectedActions: 0, timeouts: 0, handsCompleted: 0, maxTablesOpen: 0 };
   readonly bots = new Map<PlayerId, { strategy: BotStrategy; rng: RandomSource }>();
   recordEvents = true;
+  /** The configuration the tournament was created with (admin edits change director.config later). */
+  readonly initialConfig: TournamentConfig;
   private readonly queue: Message[] = [];
   private index: TableCountIndex;
   private readonly decks = new Map<TableId, (n: number) => CardCode[]>();
@@ -84,6 +88,7 @@ export class SimulationHost {
 
   constructor(private readonly opts: HostOptions) {
     this.scheduler = new VirtualScheduler(opts.startAt);
+    this.initialConfig = opts.config;
     this.director = createDirectorState({ tournamentId: opts.tournamentId, config: opts.config, createdAt: opts.startAt, serverSeedHash: commitmentFor(opts.serverSeed) });
     this.index = buildTableIndex(this.director);
     this.thinkRng = this.draw('think');
@@ -182,7 +187,7 @@ export class SimulationHost {
   private effect(e: DirectorEffect): void {
     switch (e.type) {
       case 'CREATE_TABLE': {
-        const state = createTableState({
+        const init: CreateTableInput = {
           tableId: e.tableId,
           tournamentId: this.opts.tournamentId,
           tableNumber: e.tableNumber,
@@ -191,7 +196,9 @@ export class SimulationHost {
           blinds: e.blinds,
           initialButtonSeat: e.initialButtonSeat,
           createdAt: this.now,
-        });
+        };
+        this.tableInits.set(e.tableId, init);
+        const state = createTableState(init);
         this.tables.set(e.tableId, state);
         this.tableLogs.set(e.tableId, []);
         this.decks.set(

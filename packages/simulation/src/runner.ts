@@ -32,7 +32,16 @@ export interface SimulationResult {
   host: SimulationHost;
 }
 
-const T0 = 1_760_000_000_000;
+export const SIM_T0 = 1_760_000_000_000;
+const T0 = SIM_T0;
+
+export function simulationTournamentId(players: number, seed: string): string {
+  return `sim-${players}-${seed}`;
+}
+
+export function simulationServerSeed(seed: string): string {
+  return sha256Hex(`server-seed:${seed}`);
+}
 
 /** Prize ladder in minor units for `paid` places (fixed, decreasing; documented test fixture). */
 export function testPrizeLadder(paid: number): PrizePlace[] {
@@ -72,9 +81,9 @@ export function runSimulatedTournament(opts: SimulationOptions): SimulationResul
   const seed = opts.seed ?? 'johnny';
   const config = opts.config ?? simulationConfig(opts.players, opts.paidPercent);
   const host = new SimulationHost({
-    tournamentId: `sim-${opts.players}-${seed}`,
+    tournamentId: simulationTournamentId(opts.players, seed),
     config,
-    serverSeed: sha256Hex(`server-seed:${seed}`),
+    serverSeed: simulationServerSeed(seed),
     startAt: T0,
     checkInvariants: opts.checkInvariants ?? true,
   });
