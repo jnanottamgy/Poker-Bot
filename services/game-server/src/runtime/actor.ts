@@ -92,6 +92,11 @@ export interface ActorDefinition<S, C, R, M = undefined> {
   fromSnapshot?(raw: unknown): S;
   /** Bus channel on which the owner receives routed commands (defaults by kind). */
   commandChannel?(actorId: string): string;
+  /**
+   * Read-only query answered from the last COMMITTED state, without entering
+   * the mailbox (reads never wait behind writes, and never write). Must be pure.
+   */
+  read?(state: S, query: unknown, now: number): unknown;
 }
 
 // The registry stores definitions of different S/C/R/M side by side.

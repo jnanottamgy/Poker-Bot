@@ -259,6 +259,7 @@ export function createTableActorDefinition(deps: TableActorDeps): ActorDefinitio
     }),
     versionOf: (s) => s.table?.version ?? 0,
     eventSeqOf: (s) => (s.table ? s.table.nextEventSeq - 1 : 0),
+    read: (s, q, now) => query(s, q as TableQuery, now),
   };
 }
 

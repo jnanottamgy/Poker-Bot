@@ -27,6 +27,8 @@ export interface RpcRequest {
   command: unknown;
   /** 0 (or absent) for the first transmission, then 1, 2, ... for retransmissions. */
   attempt?: number;
+  /** A read-only query answered from committed state (never logged, never queued). */
+  read?: boolean;
 }
 
 export type RpcReply =

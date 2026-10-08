@@ -288,6 +288,60 @@ describe.skipIf(!TEST_DATABASE_URL)('ActorHost on PostgreSQL', () => {
     await host.stop();
   });
 
+  it('answers reads from committed state without waiting behind a command in flight', async () => {
+    const id = await fx.table('tbl_read');
+    const gate = deferred();
+    let gated = false;
+    const base = storeTransactions(fx.store);
+    const transactions: TransactionRunner = {
+      run: (fn) =>
+        base.run(async (tx) => {
+          if (gated) await gate.promise;
+          return fn(tx);
+        }),
+    };
+    const host = makeHost({ transactions });
+    await host.activate(KIND, id);
+    await host.submit(KIND, id, open('a', 100));
+    await host.submit(KIND, id, open('b', 0));
+
+    gated = true;
+    const inFlight = host.submit(KIND, id, transfer('r1', 'a', 'b', 40));
+    const queued = host.submit(KIND, id, transfer('r2', 'a', 'b', 10));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(host.stat(KIND, id)?.queueLength).toBe(1);
+
+    // Reads resolve at once with the last committed state: the uncommitted transfer is invisible.
+    expect(await host.read(KIND, id, { account: 'a' })).toBe(100);
+    expect(await host.read(KIND, id, {})).toEqual({ version: 2, accounts: { a: 100, b: 0 } });
+
+    gate.resolve();
+    expect(await inFlight).toEqual({ ok: true, seq: 3 });
+    expect(await queued).toEqual({ ok: true, seq: 4 });
+    expect(await host.read(KIND, id, {})).toEqual({ version: 4, accounts: { a: 50, b: 50 } });
+    await host.stop();
+  });
+
+  it('refuses reads for actors it does not host or no longer owns', async () => {
+    const id = await fx.table('tbl_read_owner');
+    const clock = new ManualClock();
+    const leases = new MemoryLeaseManager();
+    const host = makeHost({ clock, leases });
+    await host.start();
+    await expect(host.read(KIND, id, {})).rejects.toMatchObject({ code: 'NOT_OWNER' });
+    await host.activate(KIND, id);
+    await host.submit(KIND, id, open('a', 5));
+    expect(await host.read(KIND, id, { account: 'a' })).toBe(5);
+
+    const stat = host.stat(KIND, id)!;
+    await leases.release({ resource: `${KIND}:${id}`, owner: 'node-1', epoch: stat.leaseEpoch!, expiresAt: stat.leaseExpiresAt! });
+    expect(await leases.acquire(`${KIND}:${id}`, 'thief', TTL, clock.now())).not.toBeNull();
+    await clock.advance(RENEW);
+    await new Promise((r) => setTimeout(r, 10));
+    await expect(host.read(KIND, id, {})).rejects.toMatchObject({ code: 'NOT_OWNER' });
+    await host.stop();
+  });
+
   it('stops processing when the lease cannot be renewed before it expires (renewals hanging)', async () => {
     const id = await fx.table('tbl_lease_hang');
     const clock = new ManualClock();

@@ -55,6 +55,10 @@ export function bankActor(opts: BankOptions = {}): ActorDefinition<BankState, Ba
     logMeta: (s) => ({ status: 'BETWEEN_HANDS', playerCount: Object.keys(s.accounts).length, handsPlayed: s.interestRuns, progressed: true }),
     versionOf: (s) => s.version,
     eventSeqOf: (s) => s.eventSeq,
+    read: (s, q) => {
+      const query = q as { account?: string };
+      return query.account === undefined ? { version: s.version, accounts: s.accounts } : (s.accounts[query.account] ?? null);
+    },
   };
 }
 

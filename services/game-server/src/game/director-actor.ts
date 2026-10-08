@@ -313,6 +313,7 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
       return at === null ? [] : [{ key: 'TICK', at, token: String(at) }];
     },
     eventSeqOf: (s) => s.eventSeq,
+    read: (s, q, now) => query(s, q as DirectorQuery, now),
   };
 }
 

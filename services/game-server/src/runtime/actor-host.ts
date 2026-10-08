@@ -896,6 +896,23 @@ export class ActorHost {
 
   // ------------------------------------------------------------ remote commands
 
+  /**
+   * Answers a read-only query from the actor's last committed state, without
+   * entering the mailbox: at scale, thousands of reads (snapshots, summaries)
+   * must never queue in front of commands. The state is replaced only after a
+   * command commits, so a reader never sees uncommitted state, and a client
+   * that received a command's reply reads the state that includes it.
+   */
+  async read(kind: string, actorId: string, query: unknown): Promise<unknown> {
+    const rec = this.records.get(actorAddress(kind, actorId));
+    if (!rec) throw new ActorRuntimeError('NOT_OWNER', `${kind} ${actorId} is not hosted on ${this.nodeId}`);
+    if (rec.status === 'activating') await rec.activation;
+    if (rec.retired || rec.status !== 'active' || !this.leaseValid(rec)) throw new ActorRuntimeError('NOT_OWNER', `${kind} ${actorId} is not active on ${this.nodeId}`);
+    const def = rec.reg.definition;
+    if (!def.read) throw new ActorRuntimeError('UNKNOWN_ACTOR_KIND', `${kind} has no read path`);
+    return def.read(rec.state, query, this.clock.now());
+  }
+
   /** Hands a routed request (e.g. from the node inbox) to a hosted actor; ignored if not hosted. */
   deliverRemote(request: unknown): void {
     if (!isRpcRequest(request)) return;
@@ -942,6 +959,7 @@ export class ActorHost {
    * logged command's reply is returned instead of applying it again.
    */
   private async handleRemote(rec: ActorRecord, req: RpcRequest): Promise<unknown> {
+    if (req.read) return this.read(rec.kind, rec.actorId, req.command);
     if (attemptOf(req) > 0) {
       if (rec.status === 'activating') await rec.activation;
       const logged = await this.findLogged(rec, req.correlationId);

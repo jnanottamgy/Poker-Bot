@@ -129,15 +129,17 @@ export class GameService implements GatewayBackend, RegistrationDirectorPort {
     return { ...reply, publicEntropy };
   }
 
+  /** Reads answer from the director's committed state without queuing behind its commands. */
   async directorQuery<T>(tournamentId: string, query: DirectorQuery): Promise<T | null> {
     if (!(await this.exists(tournamentId))) return null;
-    const reply = await this.director(tournamentId, { kind: 'QUERY', query });
+    const reply = await this.deps.node.read<DirectorActorReply>('director', tournamentId, query, { timeoutMs: this.timeout() });
     return (reply.data ?? null) as T | null;
   }
 
+  /** Reads answer from the table's committed state without queuing behind player actions. */
   async tableQuery<T>(tableId: string, query: TableQuery): Promise<T | null> {
     if (!(await this.tableExists(tableId))) return null;
-    const reply = await this.deps.node.submit<TableActorReply>('table', tableId, { kind: 'QUERY', query } satisfies TableActorCommand, { timeoutMs: this.timeout() });
+    const reply = await this.deps.node.read<TableActorReply>('table', tableId, query, { timeoutMs: this.timeout() });
     return (reply.data ?? null) as T | null;
   }
 

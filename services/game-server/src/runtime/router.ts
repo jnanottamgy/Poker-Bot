@@ -96,25 +96,30 @@ export class ActorRouter {
     return this.ownerOf(kind, actorId) === this.opts.nodeId;
   }
 
-  async submit<R = unknown>(kind: string, actorId: string, command: unknown, opts: SubmitOptions = {}): Promise<R> {
+  /** Read-only query against the owner's committed state (no mailbox, no log); same routing and deadlines as submit. */
+  async read<R = unknown>(kind: string, actorId: string, query: unknown, opts: SubmitOptions = {}): Promise<R> {
+    return this.submit<R>(kind, actorId, query, opts, true);
+  }
+
+  async submit<R = unknown>(kind: string, actorId: string, command: unknown, opts: SubmitOptions = {}, read = false): Promise<R> {
     const deadline = this.clock.now() + (opts.timeoutMs ?? this.opts.requestTimeoutMs ?? 5000);
     // One deadline for every path, local ones included: a command still queued
     // when it passes is withdrawn (processed 'no'); one in flight answers 'unknown'.
     const expiry = new AbortController();
     const timer = this.clock.setTimeout(() => expiry.abort(), Math.max(0, deadline - this.clock.now()));
     try {
-      return (await this.submitUntil(kind, actorId, command, deadline, expiry.signal)) as R;
+      return (await this.submitUntil(kind, actorId, command, deadline, expiry.signal, read)) as R;
     } finally {
       this.clock.clearTimeout(timer);
     }
   }
 
-  private async submitUntil(kind: string, actorId: string, command: unknown, deadline: number, signal: AbortSignal): Promise<unknown> {
+  private async submitUntil(kind: string, actorId: string, command: unknown, deadline: number, signal: AbortSignal, read: boolean): Promise<unknown> {
     const host = this.opts.host;
-    // Fast path: nothing beyond the mailbox when the actor lives here.
+    // Fast path: nothing beyond the mailbox (or, for reads, nothing at all) when the actor lives here.
     if (host.isActive(kind, actorId)) {
       try {
-        return await host.submit(kind, actorId, command, { signal });
+        return await (read ? host.read(kind, actorId, command) : host.submit(kind, actorId, command, { signal }));
       } catch (err) {
         if (!isNotApplied(err)) throw err;
       }
@@ -123,7 +128,7 @@ export class ActorRouter {
     for (let attempt = 0; ; attempt++) {
       if (this.stopped) throw new ActorRuntimeError('UNAVAILABLE', 'Router stopped');
       try {
-        return await this.route(kind, actorId, command, deadline, signal);
+        return await this.route(kind, actorId, command, deadline, signal, read);
       } catch (err) {
         if (!isNotApplied(err)) throw err;
         const wait = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]!;
@@ -133,21 +138,23 @@ export class ActorRouter {
     }
   }
 
-  private async route(kind: string, actorId: string, command: unknown, deadline: number, signal: AbortSignal): Promise<unknown> {
+  private async route(kind: string, actorId: string, command: unknown, deadline: number, signal: AbortSignal, read: boolean): Promise<unknown> {
     const host = this.opts.host;
     const status = host.statusOf(kind, actorId);
+    const local = () => (read ? host.read(kind, actorId, command) : host.submit(kind, actorId, command, { signal }));
+    if (status === 'faulted' && read) throw new ActorRuntimeError('FAULTED', `${kind} ${actorId} is halted`);
     // 'activating' queues in the mailbox until the deadline; 'faulted' answers FAULTED immediately.
-    if (status === 'active' || status === 'activating' || status === 'faulted') return host.submit(kind, actorId, command, { signal });
+    if (status === 'active' || status === 'activating' || status === 'faulted') return local();
     if (status === 'draining') throw new ActorRuntimeError('NOT_OWNER', 'Actor is moving to another node');
-    if (!this.placedHere(kind, actorId)) return this.remote(kind, actorId, command, deadline);
+    if (!this.placedHere(kind, actorId)) return this.remote(kind, actorId, command, deadline, read);
     await host.activate(kind, actorId, { acquireWaitMs: Math.max(0, deadline - this.clock.now()) }).catch((err: unknown) => {
       // A lease still held elsewhere means the command was not applied: retryable.
       throw err instanceof ActorRuntimeError && err.code === 'UNAVAILABLE' ? new ActorRuntimeError('NOT_OWNER', err.message) : err;
     });
-    return host.submit(kind, actorId, command, { signal });
+    return local();
   }
 
-  private remote(kind: string, actorId: string, command: unknown, deadline: number): Promise<unknown> {
+  private remote(kind: string, actorId: string, command: unknown, deadline: number, read = false): Promise<unknown> {
     const reg = this.opts.host.registration(kind)!;
     const channel = commandChannelOf(reg.definition, actorId);
     const correlationId = randomUUID();
@@ -174,7 +181,7 @@ export class ActorRouter {
       const publish = () => {
         if (entry.acked || !this.pending.has(correlationId)) return;
         // `attempt` > 0 tells a new owner to look the request up in the durable log first.
-        const request: RpcRequest = { t: 'actor_rpc', correlationId, replyTo: this.replyTo, kind, actorId, command, attempt };
+        const request: RpcRequest = { t: 'actor_rpc', correlationId, replyTo: this.replyTo, kind, actorId, command, attempt, ...(read ? { read: true } : {}) };
         this.opts.bus.publish(channel, request).catch(() => undefined);
         // Unacknowledged: maybe nobody hosts the actor. Ask the placement owner to activate it.
         const owner = attempt++ > 0 ? this.ownerOf(kind, actorId) : null;

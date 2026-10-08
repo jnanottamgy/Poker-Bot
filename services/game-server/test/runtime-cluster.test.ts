@@ -93,6 +93,9 @@ describe.skipIf(!TEST_DATABASE_URL || !TEST_REDIS_URL)('multi-node runtime (Redi
     await a.host.idle();
     const beforeCrash = structuredClone(a.host.stateOf<BankState>('table', id)!);
     expect(beforeCrash.version).toBe(33);
+    // Reads reach the owner over RPC from the gateway and from B, bypassing the mailbox.
+    expect(await gw.read('table', id, {})).toEqual({ version: 33, accounts: beforeCrash.accounts });
+    expect(await b.read('table', id, { account: 'a' })).toBe(beforeCrash.accounts.a);
 
     await a.kill();
     const crashedAt = Date.now();
@@ -105,6 +108,7 @@ describe.skipIf(!TEST_DATABASE_URL || !TEST_REDIS_URL)('multi-node runtime (Redi
 
     // The gateway reaches the new owner; the log stays gap-free.
     expect(await gw.submit('table', id, transfer('after-1', 'a', 'b', 1))).toEqual({ ok: true, seq: 34 });
+    expect(await gw.read('table', id, { account: 'a' })).toBe(beforeCrash.accounts.a! - 1);
     // The timer armed on A fires on B.
     await waitFor(() => (b.host.stateOf<BankState>('table', id)?.interestRuns ?? 0) >= 1, 10_000);
     await b.host.idle();

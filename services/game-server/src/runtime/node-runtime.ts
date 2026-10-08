@@ -182,6 +182,11 @@ export class NodeRuntime {
     return this.router.submit<R>(kind, actorId, command, opts);
   }
 
+  /** Read-only query against an actor's committed state (see ActorDefinition.read). */
+  read<R = unknown>(kind: string, actorId: string, query: unknown, opts?: SubmitOptions): Promise<R> {
+    return this.router.read<R>(kind, actorId, query, opts);
+  }
+
   stats(): { nodeId: string; role: NodeRole; members: MemberInfo[]; actors: ActorStats[]; timers: number } {
     return { nodeId: this.opts.nodeId, role: this.opts.role, members: this.membership.members(), actors: this.host.stats(), timers: this.host.timers.size };
   }
