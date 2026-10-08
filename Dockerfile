@@ -19,7 +19,8 @@ RUN apk add --no-cache tini
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080 \
-    STATIC_DIR=/app/public
+    STATIC_DIR=/app/public \
+    UV_THREADPOOL_SIZE=16
 COPY --from=build --chown=node:node /app /app
 USER node
 EXPOSE 8080

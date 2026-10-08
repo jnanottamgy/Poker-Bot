@@ -21,5 +21,10 @@ export function normalizeRejoinCode(input: string): string | null {
   return `${s.slice(0, 4)}-${s.slice(4)}`;
 }
 
-export const hashRejoinCode = (code: string) => hashPassword(code);
+/**
+ * Rejoin codes are hashed at half the admin-password cost (N = 2^14, ~16 MB):
+ * every registration hashes one, and online guessing is already throttled by
+ * rate limits. The parameters are stored in the hash, so verification adapts.
+ */
+export const hashRejoinCode = (code: string) => hashPassword(code, { N: 1 << 14 });
 export const verifyRejoinCode = (code: string, hash: string) => verifyPassword(code, hash);

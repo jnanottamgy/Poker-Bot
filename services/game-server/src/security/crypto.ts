@@ -30,16 +30,43 @@ export function constantTimeEqual(a: string, b: string): boolean {
 
 const SCRYPT_PARAMS = { N: 1 << 15, r: 8, p: 1, keyLen: 64, saltLen: 16 } as const;
 
+/**
+ * scrypt runs on libuv's small thread pool, which Node also uses for DNS
+ * lookups and file I/O. Unbounded, a burst of registrations or logins fills
+ * the pool and even database connection set-up times out. At most half of the
+ * pool hashes at once; the rest queue here.
+ */
+const KDF_SLOTS = Math.max(1, Math.floor(Number(process.env.UV_THREADPOOL_SIZE ?? 4) / 2));
+let kdfActive = 0;
+const kdfWaiters: Array<() => void> = [];
+
+async function withKdfSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (kdfActive < KDF_SLOTS) kdfActive++;
+  else await new Promise<void>((resolve) => kdfWaiters.push(resolve));
+  try {
+    return await fn();
+  } finally {
+    // Hand the slot straight to the next waiter (no window where both proceed).
+    const next = kdfWaiters.shift();
+    if (next) next();
+    else kdfActive--;
+  }
+}
+
 function scrypt(password: string, salt: Buffer, keyLen: number, opts: ScryptOptions): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    scryptCb(password, salt, keyLen, opts, (err, key) => (err ? reject(err) : resolve(key)));
-  });
+  return withKdfSlot(
+    () =>
+      new Promise((resolve, reject) => {
+        scryptCb(password, salt, keyLen, opts, (err, key) => (err ? reject(err) : resolve(key)));
+      }),
+  );
 }
 
 /** Format: scrypt$N$r$p$saltB64url$hashB64url */
-export async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string, cost: { N?: number } = {}): Promise<string> {
   const salt = randomBytes(SCRYPT_PARAMS.saltLen);
-  const { N, r, p, keyLen } = SCRYPT_PARAMS;
+  const { r, p, keyLen } = SCRYPT_PARAMS;
+  const N = cost.N ?? SCRYPT_PARAMS.N;
   const key = await scrypt(password, salt, keyLen, { N, r, p, maxmem: 128 * N * r * 2 });
   return ['scrypt', N, r, p, salt.toString('base64url'), key.toString('base64url')].join('$');
 }
