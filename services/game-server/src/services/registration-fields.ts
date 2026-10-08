@@ -6,7 +6,7 @@ import type { RegistrationConfig, RegistrationFieldKey } from '@jpb/shared-types
  * markup-like input, enforce formats and lengths.
  */
 // eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁠-⁯﻿]/g;
+const CONTROL = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
 
 const LIMITS: Record<RegistrationFieldKey, { min: number; max: number }> = {
   name: { min: 1, max: 40 },
