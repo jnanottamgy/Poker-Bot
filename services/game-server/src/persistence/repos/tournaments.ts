@@ -204,14 +204,18 @@ export class TournamentRepo {
     );
   }
 
-  /** Atomically reserves the next registration sequence number. */
+  /**
+   * Atomically reserves the next registration sequence number. The row stays
+   * locked until the caller's transaction ends: call it last, just before the
+   * insert that uses the number.
+   */
   async nextRegistrationSeq(id: string): Promise<number> {
-    const r = await this.q.query<{ registered_count: number }>(
-      `UPDATE tournaments SET registered_count = registered_count + 1 WHERE id = $1 RETURNING registered_count`,
+    const r = await this.q.query<{ next_registration_seq: number }>(
+      `UPDATE tournaments SET next_registration_seq = next_registration_seq + 1 WHERE id = $1 RETURNING next_registration_seq`,
       [id],
     );
     if (!r.rows[0]) throw new Error(`Tournament ${id} not found`);
-    return r.rows[0].registered_count;
+    return r.rows[0].next_registration_seq;
   }
 
   /** Normalized copies of blind levels and prizes for querying/reporting (config JSON stays authoritative). */

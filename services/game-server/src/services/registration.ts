@@ -92,7 +92,6 @@ export class RegistrationService {
     const rejoinHash = await hashRejoinCode(rejoinCode);
 
     const created = await this.store.transaction(async (repos) => {
-      const seq = await repos.tournaments.nextRegistrationSeq(t.id);
       const publicId = await this.uniquePublicId(t, (id) => repos.players.publicIdExists(t.id, id));
       const player = await repos.players.createPlayer({
         id: newId('ply'),
@@ -106,6 +105,8 @@ export class RegistrationService {
         collegeId: sanitized.fields.collegeId ?? null,
       });
       await repos.players.setRejoinCodeHash(player.id, rejoinHash);
+      // Reserved last: the tournament row stays locked only for the final insert.
+      const seq = await repos.tournaments.nextRegistrationSeq(t.id);
       const entry = await repos.players.createEntry({
         entryId: newId('ent'),
         tournamentId: t.id,

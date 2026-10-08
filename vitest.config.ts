@@ -28,7 +28,7 @@ export default defineConfig({
       {
         test: {
           name: 'integration',
-          include: ['tests/integration/**/*.test.ts', 'tests/e2e/**/*.test.ts', 'tests/chaos/**/*.test.ts'],
+          include: ['tests/integration/**/*.test.ts', 'tests/e2e/**/*.test.ts', 'tests/chaos/**/*.test.ts', 'tests/load/**/*.test.ts'],
           environment: 'node',
           testTimeout: 300_000,
           hookTimeout: 120_000,
