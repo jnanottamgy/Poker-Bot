@@ -31,7 +31,8 @@ export function clientIp(req: FastifyRequest): string {
 export function rateLimit(ctx: HttpContext, name: string, rule: RateLimitRule, key: string): void {
   let limiter = ctx.limiters.get(name);
   if (!limiter) {
-    limiter = new RateLimiter(rule);
+    const scale = ctx.env.rateLimitScale;
+    limiter = new RateLimiter({ capacity: rule.capacity * scale, refillPerSecond: rule.refillPerSecond * scale });
     ctx.limiters.set(name, limiter);
   }
   const now = ctx.now();

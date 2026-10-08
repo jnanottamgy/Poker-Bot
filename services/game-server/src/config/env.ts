@@ -47,6 +47,8 @@ const envSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(48),
   ADMIN_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(72).default(12),
   STATIC_DIR: z.string().optional(),
+  /** Multiplies every rate limit (load testing from one IP). Ignored in production. */
+  RATE_LIMIT_SCALE: z.coerce.number().min(1).max(100_000).default(1),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
@@ -74,6 +76,7 @@ export interface ServerEnv {
   sessionTtlMs: number;
   adminSessionTtlMs: number;
   staticDir: string | null;
+  rateLimitScale: number;
   logLevel: string;
 }
 
@@ -132,6 +135,7 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     sessionTtlMs: e.SESSION_TTL_HOURS * 3_600_000,
     adminSessionTtlMs: e.ADMIN_SESSION_TTL_HOURS * 3_600_000,
     staticDir: e.STATIC_DIR ?? null,
+    rateLimitScale: production ? 1 : e.RATE_LIMIT_SCALE,
     logLevel: e.LOG_LEVEL,
   };
 }
