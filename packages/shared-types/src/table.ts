@@ -37,6 +37,8 @@ export interface SeatOccupant {
   publicId: string;
   stack: Chips;
   connected: boolean;
+  /** Suspended by an admin: decisions time out immediately, own actions are rejected. */
+  suspended?: boolean;
   consecutiveTimeouts: number;
   /** Player was seated while a hand was running; dealt in from the next hand. */
   waitingForNextHand: boolean;
@@ -113,6 +115,12 @@ export type TableCommand =
    * is re-emitted with the same turnVersion. Rejected when nobody is acting.
    */
   | { type: 'ADMIN_ADD_TIME'; ms: number }
+  /**
+   * Suspension (admin sanction): the player stays seated and keeps posting
+   * blinds, but every decision is timed out immediately and their own actions
+   * are rejected (PLAYER_SUSPENDED) until restored.
+   */
+  | { type: 'SET_SUSPENDED'; playerId: PlayerId; suspended: boolean }
   | { type: 'START' }
   | { type: 'CLOSE' };
 
@@ -214,6 +222,8 @@ export type ActionRejectCode =
   | 'TABLE_CLOSED'
   | 'RATE_LIMITED'
   | 'INVALID_COMMAND'
+  /** PLAYER_ACTION from a suspended player. */
+  | 'PLAYER_SUSPENDED'
   /** SEAT_PLAYER: the seat is occupied (or out of range). */
   | 'SEAT_UNAVAILABLE'
   /** SEAT_PLAYER: the player already sits at this table. */

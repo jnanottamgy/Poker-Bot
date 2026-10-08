@@ -27,6 +27,7 @@ export function playerAction(d: Draft, c: Cmd<'PLAYER_ACTION'>): Outcome {
   if (hp === null) return reject('PLAYER_NOT_IN_HAND', 'player is not dealt into this hand');
   if (hp.folded) return reject('PLAYER_FOLDED', 'player has folded');
   if (hp.allIn) return reject('PLAYER_ALL_IN', 'player is all-in');
+  if (d.s.seats[hp.seat]?.suspended === true) return reject('PLAYER_SUSPENDED', 'this player is suspended by the tournament director');
   const turn = d.s.turn;
   if (turn === null || turn.seat !== hp.seat) return reject('NOT_YOUR_TURN', 'it is not this player’s turn');
   if (c.tableStateVersion !== null && c.tableStateVersion !== turn.turnVersion) {

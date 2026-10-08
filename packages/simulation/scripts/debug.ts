@@ -1,0 +1,13 @@
+import { runSimulatedTournament } from '@jpb/simulation';
+import { bmValues } from '@jpb/tournament-engine';
+const n = Number(process.argv[2] ?? 17);
+const r = runSimulatedTournament({ players: n, seed: process.argv[3] ?? `seed${n}` });
+const d = r.host.director;
+console.log('status', d.status, 'active', d.counters.active, 'inTransit', d.counters.inTransit, 'tables', d.counters.tables);
+console.log('hfh', JSON.stringify(d.handForHand));
+console.log('final', JSON.stringify({ ...d.finalTable, pool: d.finalTable.pool.length }));
+console.log('pending', JSON.stringify(Object.values(d.pendingMoves)));
+for (const t of bmValues(d.tables)) console.log('dir-table', t.summary.tableNumber, t.summary.status, t.status, t.holds, 'inHand', t.summary.inHand, 'seats', t.summary.seats.map(s => `${s.seat}:${s.playerId}${s.movingOut ? '*' : ''}`).join(','), 'reserved', t.summary.reservedSeats.join(','));
+for (const [id, t] of r.host.tables) console.log('actor', id, t.status, 'holds', t.holds, 'hfh', t.handForHand, 'seats', t.seats.filter(Boolean).length, 'turn', !!t.turn, 'next', !!t.nextHand);
+console.log('alerts', JSON.stringify(r.host.alerts));
+console.log('lastEvents', JSON.stringify(r.host.tournamentEvents.slice(-6).map(e => e.kind)));

@@ -148,3 +148,19 @@ export function close(d: Draft): Outcome {
   d.s.frozen = null;
   return accept();
 }
+
+/**
+ * SET_SUSPENDED: an admin sanction. The player stays seated and keeps
+ * posting blinds; while suspended every decision times out immediately
+ * (check if legal, else fold) and their own PLAYER_ACTIONs are rejected.
+ * Suspending the player who is acting applies the timeout now.
+ */
+export function setSuspended(d: Draft, c: Cmd<'SET_SUSPENDED'>): Outcome {
+  if (typeof c.suspended !== 'boolean' || typeof c.playerId !== 'string') return reject('INVALID_COMMAND', 'playerId and suspended are required');
+  const seat = d.s.seats.findIndex((o) => o !== null && o.playerId === c.playerId);
+  if (seat < 0) return reject('PLAYER_NOT_SEATED', 'player is not seated at this table');
+  const occ = d.s.seats[seat]!;
+  d.s.seats[seat] = { ...occ, suspended: c.suspended };
+  if (c.suspended && d.s.frozen === null && d.s.turn !== null && d.s.turn.seat === seat && handInProgress(d.s)) applyTimeout(d);
+  return accept();
+}

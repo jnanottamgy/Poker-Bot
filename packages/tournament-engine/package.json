@@ -18,6 +18,7 @@
     "@jpb/seating-engine": "*",
     "@jpb/balancing-engine": "*",
     "@jpb/randomness": "*",
-    "@jpb/fairness-engine": "*"
+    "@jpb/fairness-engine": "*",
+    "@jpb/validation": "*"
   }
 }

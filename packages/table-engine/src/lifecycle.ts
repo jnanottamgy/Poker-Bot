@@ -156,7 +156,10 @@ function requestAction(d: Draft, seat: SeatIndex, playerId: PlayerId, legal: Leg
   if (occ === null || occ === undefined || occ.playerId !== playerId)
     throw new Error(`requestAction: seat ${seat} is not ${playerId}`);
   const away = isAway(occ, d.s.timing);
-  const timerMs = away ? d.s.timing.awayActionTimerMs : d.s.timing.actionTimerMs;
+  const suspended = occ.suspended === true;
+  // A suspended player's decision times out at once (the host fires the timer immediately).
+  const timerMs = suspended ? 0 : away ? d.s.timing.awayActionTimerMs : d.s.timing.actionTimerMs;
+  const graceMs = suspended ? 0 : d.s.timing.actionGraceMs;
   const deadline = d.now + timerMs;
   const token = mintToken(d, 'ACTION_TIMEOUT');
   d.s.turn = {
@@ -166,13 +169,13 @@ function requestAction(d: Draft, seat: SeatIndex, playerId: PlayerId, legal: Leg
     requestedAt: d.now,
     deadline,
     timerMs,
-    graceMs: d.s.timing.actionGraceMs,
+    graceMs,
     timerToken: token,
     away,
     addedMs: 0,
   };
   emit(d, { kind: 'ACTION_REQUESTED', seat, playerId, legal, deadline, timerMs, turnVersion: d.s.version });
-  requestTimer(d, 'ACTION_TIMEOUT', deadline + d.s.timing.actionGraceMs, token);
+  requestTimer(d, 'ACTION_TIMEOUT', deadline + graceMs, token);
 }
 
 /**

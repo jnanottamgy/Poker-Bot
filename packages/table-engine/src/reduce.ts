@@ -8,6 +8,7 @@ import {
   release,
   setBlinds,
   setHandForHand,
+  setSuspended,
   setTiming,
   start,
   unfreeze,
@@ -80,6 +81,8 @@ function dispatch(d: Draft, c: TableCommand, deckFor: (n: number) => CardCode[])
       return adjustStack(d, c);
     case 'ADMIN_ADD_TIME':
       return addTime(d, c);
+    case 'SET_SUSPENDED':
+      return setSuspended(d, c);
     case 'START':
       return start(d, deckFor);
     case 'CLOSE':

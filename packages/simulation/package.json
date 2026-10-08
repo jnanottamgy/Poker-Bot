@@ -12,7 +12,8 @@
   "scripts": {
     "test": "vitest run --root ../.. --project packages packages/simulation/test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "bench": "tsx src/bench.ts"
+    "sweep": "tsx scripts/sweep.ts",
+    "debug": "tsx scripts/debug.ts"
   },
   "dependencies": {
     "@jpb/shared-types": "*",
