@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "vite/client"
+    ]
+  },
+  "include": [
+    "packages/client-sdk/src",
+    "packages/client-sdk/test",
+    "packages/ui/src",
+    "packages/ui/test",
+    "packages/ui/gallery",
+    "apps/*/src",
+    "apps/*/test",
+    "apps/*/vite.config.ts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/dist"
+  ]
+}

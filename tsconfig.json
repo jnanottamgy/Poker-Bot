@@ -23,8 +23,6 @@
     "packages/tournament-engine/test",
     "packages/validation/src",
     "packages/validation/test",
-    "packages/client-sdk/src",
-    "packages/client-sdk/test",
     "packages/simulation/src",
     "packages/simulation/test",
     "services/game-server/src",
