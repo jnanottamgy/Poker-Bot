@@ -107,7 +107,8 @@ export type TableCommand =
     }
   | { type: 'TIMER_FIRED'; kind: TableTimerKind; token: string }
   | { type: 'PLAYER_CONNECTION'; playerId: PlayerId; connected: boolean }
-  | { type: 'ADMIN_FORCE_TIMEOUT' }
+  /** Times out the acting player now. With `turnVersion`, only if that turn is still the one awaited (no wrong-player timeouts). */
+  | { type: 'ADMIN_FORCE_TIMEOUT'; turnVersion?: number }
   | { type: 'ADMIN_ADJUST_STACK'; playerId: PlayerId; newStack: Chips }
   /**
    * Gives the player currently to act `ms` extra milliseconds (admin "add time").

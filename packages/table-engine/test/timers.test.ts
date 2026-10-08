@@ -169,6 +169,16 @@ describe('admin turn controls', () => {
     expect(h.send({ type: 'ADMIN_FORCE_TIMEOUT' }).reply).toMatchObject({ ok: false, code: 'NO_ACTIVE_HAND' });
   });
 
+  it('ADMIN_FORCE_TIMEOUT with a turnVersion only times out that exact turn', () => {
+    const h = headsUp();
+    const turnVersion = h.state.turn!.turnVersion;
+    expect(h.send({ type: 'ADMIN_FORCE_TIMEOUT', turnVersion: turnVersion + 1 }).reply).toMatchObject({ ok: false, code: 'STALE_STATE_VERSION' });
+    expect(h.state.turn!.turnVersion).toBe(turnVersion);
+    const t = h.send({ type: 'ADMIN_FORCE_TIMEOUT', turnVersion });
+    expect(t.reply).toMatchObject({ ok: true });
+    expect(t.events.some((e) => e.event.kind === 'PLAYER_ACTED' && e.event.timeout)).toBe(true);
+  });
+
   it('ADMIN_ADD_TIME extends the deadline, re-issues the token and keeps the turnVersion', () => {
     const h = headsUp();
     const turn = h.state.turn;

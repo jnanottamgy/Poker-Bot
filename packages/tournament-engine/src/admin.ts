@@ -180,6 +180,12 @@ export function tableAdmin(d: Draft, tableId: TableId, command: 'HOLD' | 'RELEAS
   else tableCommand(d, tableId, { type: 'ADMIN_FORCE_TIMEOUT' });
 }
 
+export function forceTimeout(d: Draft, tableId: TableId, turnVersion: number | undefined): void {
+  const t = getTable(d, tableId);
+  if (!t || t.summary.status === 'CLOSED') fail('TABLE_NOT_FOUND', 'No such open table.');
+  tableCommand(d, tableId, turnVersion === undefined ? { type: 'ADMIN_FORCE_TIMEOUT' } : { type: 'ADMIN_FORCE_TIMEOUT', turnVersion });
+}
+
 export function tableAddTime(d: Draft, tableId: TableId, ms: number): void {
   if (!Number.isSafeInteger(ms) || ms < 1000 || ms > 600_000) fail('INVALID', 'Extra time must be 1–600 seconds.');
   tableAdmin(d, tableId, 'FORCE_TIMEOUT', ms);
@@ -210,9 +216,11 @@ export function disqualify(d: Draft, playerId: PlayerId): void {
 }
 
 export function adjustStack(d: Draft, playerId: PlayerId, newStack: number): void {
-  if (!Number.isSafeInteger(newStack) || newStack < 0) fail('INVALID', 'Stack must be a non-negative whole number.');
+  if (!Number.isSafeInteger(newStack) || newStack < 1) fail('INVALID', 'The new stack must be a whole number of at least 1 chip (to take a player out, disqualify them).');
   const p = mustPlayer(d, playerId);
   if ((p.status !== 'SEATED' && p.status !== 'SUSPENDED') || !p.tableId) fail('NOT_SEATED', 'Stacks can only be adjusted for seated players (between hands).');
+  const t = getTable(d, p.tableId);
+  if (t?.summary.inHand) fail('HAND_IN_PROGRESS', 'The table is playing a hand. Hold the table (or wait for the hand to end), then adjust.');
   tableCommand(d, p.tableId, { type: 'ADMIN_ADJUST_STACK', playerId, newStack });
 }
 

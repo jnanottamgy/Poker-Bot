@@ -233,7 +233,7 @@ export type DirectorInput =
   | { type: 'RELEASE_TABLE'; tableId: TableId; admin: AdminMeta }
   | { type: 'FREEZE_TABLE'; tableId: TableId; admin: AdminMeta }
   | { type: 'UNFREEZE_TABLE'; tableId: TableId; admin: AdminMeta }
-  | { type: 'FORCE_TIMEOUT'; tableId: TableId; admin: AdminMeta }
+  | { type: 'FORCE_TIMEOUT'; tableId: TableId; turnVersion?: number; admin: AdminMeta }
   | { type: 'TABLE_ADD_TIME'; tableId: TableId; ms: number; admin: AdminMeta }
   | { type: 'SUSPEND_PLAYER'; playerId: PlayerId; admin: AdminMeta }
   | { type: 'RESTORE_PLAYER'; playerId: PlayerId; admin: AdminMeta }

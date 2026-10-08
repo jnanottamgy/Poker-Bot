@@ -338,6 +338,7 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
         lastProgressAt,
         disconnectedPlayers: 0,
         chips: t.chips,
+        breaking: t.summary.status === 'BREAKING',
       };
     });
     if (status) rows = rows.filter((r) => r.status === status);

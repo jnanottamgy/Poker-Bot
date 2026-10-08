@@ -18,6 +18,7 @@ import {
 import type { BucketMap, CreateDirectorInput, DirectorEffect, DirectorInput, DirectorReply, DirectorState } from '@jpb/tournament-engine';
 import type { TableCountIndex } from '@jpb/balancing-engine';
 import { drawSource } from '@jpb/fairness-engine/node';
+import { scoreSeatsForIncoming } from '@jpb/seating-engine';
 import type { ActorDefinition, ActorEnvelope, OutboxMessage, StepResult, TimerRequest } from '../runtime/actor';
 import { noopResult, stepResult } from '../runtime/actor';
 import { channels } from '../bus/bus';
@@ -55,6 +56,7 @@ export type DirectorQuery =
   | { q: 'TABLES' }
   | { q: 'FEATURED' }
   | { q: 'HEALTH' }
+  | { q: 'SEAT_SCORES'; tableId: string; playerId: string }
   | { q: 'OVERVIEW' };
 
 export type DirectorActorCommand =
@@ -277,6 +279,13 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
       }
       case 'TABLES':
         return { ...OK, data: openTableList(d) };
+      case 'SEAT_SCORES': {
+        const table = bmGet(d.tables, q.tableId);
+        const player = getDirectorPlayer(d, q.playerId);
+        if (!table || table.summary.status === 'CLOSED' || !player) return { ...OK, data: null };
+        const choices = scoreSeatsForIncoming(table.summary, { playerId: player.playerId, stats: player.stats }, d.config.balancing.weights);
+        return { ...OK, data: choices.map((c, i) => ({ seat: c.seat, score: c.score, breakdown: c.breakdown, best: i === 0 })) };
+      }
       case 'HEALTH':
         return { ...OK, data: { status: d.status, nextTickAt: nextTickAt(d), frozen: d.frozen, integrityOk: d.integrity.ok } };
       case 'FEATURED': {

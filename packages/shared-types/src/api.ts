@@ -222,6 +222,17 @@ export interface TableListItemDto {
   lastProgressAt: number | null;
   disconnectedPlayers: number;
   chips: number;
+  /** Johnny is breaking this table (players leave as their hands finish). */
+  breaking?: boolean;
+}
+
+/** One free seat scored for an incoming player (lower is better; documented formula in SEATING_AND_BALANCING.md). */
+export interface SeatScoreDto {
+  seat: number;
+  score: number;
+  breakdown: Record<string, number>;
+  /** The seat Johnny would choose. */
+  best: boolean;
 }
 
 export interface TableInternalsDto {

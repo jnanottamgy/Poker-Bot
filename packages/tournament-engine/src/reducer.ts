@@ -100,7 +100,7 @@ function dispatch(d: Draft, i: DirectorInput): void {
     case 'UNFREEZE_TABLE':
       return admin.tableAdmin(d, i.tableId, 'UNFREEZE');
     case 'FORCE_TIMEOUT':
-      return admin.tableAdmin(d, i.tableId, 'FORCE_TIMEOUT');
+      return admin.forceTimeout(d, i.tableId, i.turnVersion);
     case 'TABLE_ADD_TIME':
       return admin.tableAddTime(d, i.tableId, i.ms);
     case 'SUSPEND_PLAYER':

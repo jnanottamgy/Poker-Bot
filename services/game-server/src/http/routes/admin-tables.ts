@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AdminTableView, Permission, TableDetailDto } from '@jpb/shared-types';
+import type { AdminTableView, Permission, SeatScoreDto, TableDetailDto } from '@jpb/shared-types';
 import type { DirectorInput } from '@jpb/tournament-engine';
 import { requireAdmin } from '../context';
 import { notFound } from '../errors';
@@ -91,7 +91,24 @@ export function registerAdminTableRoutes(app: FastifyInstance, deps: TableRouteD
   op('release', { level: 1 }, 'TABLE_RELEASE', (tableId, admin) => ({ type: 'RELEASE_TABLE', tableId, admin }));
   op('freeze', { level: 1 }, 'TABLE_FREEZE', (tableId, admin) => ({ type: 'FREEZE_TABLE', tableId, admin }));
   op('unfreeze', { level: 1 }, 'TABLE_UNFREEZE', (tableId, admin) => ({ type: 'UNFREEZE_TABLE', tableId, admin }));
-  op('force-timeout', { level: 1, reasonRequired: true }, 'FORCE_TIMEOUT', (tableId, admin) => ({ type: 'FORCE_TIMEOUT', tableId, admin }));
+  app.post<P>('/api/admin/tables/:tableId/force-timeout', async (req) => {
+    const { principal, tableId, tournamentId } = await tableFor(req, 'TABLE_CONTROL');
+    const reason = reasonFor(req.body, { level: 1, reasonRequired: true });
+    // With the turn version the operator saw, a turn that moved on meanwhile is never timed out by mistake.
+    const raw = (req.body as { turnVersion?: unknown } | null)?.turnVersion;
+    const turnVersion = Number.isSafeInteger(raw) ? (raw as number) : undefined;
+    await directorAdmin(deps, req, principal, tournamentId, { type: 'FORCE_TIMEOUT', tableId, ...(turnVersion !== undefined ? { turnVersion } : {}), admin: { adminId: principal.admin.id, reason } }, { action: 'FORCE_TIMEOUT', target: `table:${tableId}`, reason });
+    return OK;
+  });
+
+  app.get<P>('/api/admin/tables/:tableId/seat-scores', async (req) => {
+    const { tournamentId, tableId } = await tableFor(req, 'PLAYER_MOVE');
+    const playerId = (req.query as { playerId?: unknown }).playerId;
+    if (typeof playerId !== 'string' || !playerId) throw notFound('Player');
+    const scores = await game.directorQuery<SeatScoreDto[]>(tournamentId, { q: 'SEAT_SCORES', tableId, playerId });
+    if (!scores) throw notFound('Table or player');
+    return { seats: scores };
+  });
   op('break', { level: 2, word: 'BREAK' }, 'BREAK_TABLE', (tableId, admin) => ({ type: 'BREAK_TABLE', tableId, admin }));
 
   app.post<P>('/api/admin/tables/:tableId/add-time', async (req) => {

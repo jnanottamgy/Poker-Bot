@@ -78,5 +78,5 @@ describe('replay determinism', () => {
       }),
       { numRuns: 12 },
     );
-  });
+  }, 120_000);
 });

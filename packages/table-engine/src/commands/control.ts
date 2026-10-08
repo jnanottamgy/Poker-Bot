@@ -104,9 +104,12 @@ export function unfreeze(d: Draft): Outcome {
 }
 
 /** ADMIN_FORCE_TIMEOUT: applies the timeout action to the acting player now. */
-export function forceTimeout(d: Draft): Outcome {
+export function forceTimeout(d: Draft, c: Cmd<'ADMIN_FORCE_TIMEOUT'>): Outcome {
   if (d.s.frozen !== null) return reject('TABLE_FROZEN', 'the table is frozen');
   if (d.s.turn === null || !handInProgress(d.s)) return reject('NO_ACTIVE_HAND', 'nobody is acting');
+  if (c.turnVersion !== undefined && c.turnVersion !== d.s.turn.turnVersion) {
+    return reject('STALE_STATE_VERSION', 'that player already acted; the turn has moved on');
+  }
   applyTimeout(d);
   return accept();
 }

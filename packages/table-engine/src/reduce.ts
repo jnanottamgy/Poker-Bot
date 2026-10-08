@@ -76,7 +76,7 @@ function dispatch(d: Draft, c: TableCommand, deckFor: (n: number) => CardCode[])
     case 'PLAYER_CONNECTION':
       return playerConnection(d, c);
     case 'ADMIN_FORCE_TIMEOUT':
-      return forceTimeout(d);
+      return forceTimeout(d, c);
     case 'ADMIN_ADJUST_STACK':
       return adjustStack(d, c);
     case 'ADMIN_ADD_TIME':
