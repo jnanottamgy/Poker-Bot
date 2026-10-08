@@ -121,7 +121,10 @@ export function setHandForHand(d: Draft, enabled: boolean): void {
     if (d.s.counters.tables < 2) fail('ILLEGAL_STATE', 'Hand-for-hand needs at least two tables.');
     enableHandForHand(d, true);
     progressHandForHand(d);
-  } else disableHandForHand(d);
+  } else {
+    disableHandForHand(d);
+    rebalance(d);
+  }
 }
 
 export function movePlayer(d: Draft, playerId: PlayerId, toTableId: TableId, toSeat: SeatIndex | null): void {

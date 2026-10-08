@@ -40,7 +40,9 @@ export function autoHandForHand(d: Draft): void {
   if (!d.s.config.handForHand.autoAtBubble || hfh.manual) return;
   const paid = paidPlaces(d.s.config.prizeStructure);
   if (paid === 0) return;
-  if (!hfh.enabled && d.s.counters.active === paid + 1 && d.s.counters.tables > 1) enableHandForHand(d, false);
+  // A field that already fits the final table forms it instead: the bubble is then played there.
+  const fitsFinalTable = d.s.counters.active <= d.s.config.tables.finalTableSize;
+  if (!hfh.enabled && d.s.counters.active === paid + 1 && d.s.counters.tables > 1 && !fitsFinalTable) enableHandForHand(d, false);
   else if (hfh.enabled && d.s.counters.active <= paid) disableHandForHand(d);
 }
 
@@ -69,8 +71,10 @@ export function progressHandForHand(d: Draft): void {
     d.s.handForHand = { ...hfh, phase: 'SYNCING', awaiting: [], roundBusts: [] };
     processBusts(d, busts);
     autoHandForHand(d);
-    if (!d.s.handForHand.enabled) return;
+    // Between rounds balancing is allowed again — also when the bubble just burst and
+    // hand-for-hand ended (otherwise nothing would merge the remaining tables).
     rebalance(d);
+    if (!d.s.handForHand.enabled) return;
   }
   if (d.s.handForHand.phase !== 'SYNCING') return;
   if (d.s.frozen || d.s.status !== 'RUNNING') return;

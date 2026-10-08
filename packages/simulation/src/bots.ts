@@ -6,9 +6,9 @@ import type { RandomSource } from '@jpb/randomness';
  * Deterministic test agents (NOT AI): each decision is a fixed rule plus
  * draws from a seeded HMAC-DRBG stream, so a run is exactly reproducible.
  */
-export type BotStrategy = 'ALWAYS_FOLD' | 'RANDOM_LEGAL_ACTION' | 'CALL_HEAVY' | 'RAISE_HEAVY' | 'ALL_IN_RANDOMLY' | 'TIMEOUT_ALWAYS';
+export type BotStrategy = 'ALWAYS_FOLD' | 'RANDOM_LEGAL_ACTION' | 'CALL_HEAVY' | 'RAISE_HEAVY' | 'ALL_IN_RANDOMLY' | 'TIMEOUT_ALWAYS' | 'SHOVE_HEAVY';
 
-export const BOT_STRATEGIES: readonly BotStrategy[] = ['ALWAYS_FOLD', 'RANDOM_LEGAL_ACTION', 'CALL_HEAVY', 'RAISE_HEAVY', 'ALL_IN_RANDOMLY', 'TIMEOUT_ALWAYS'];
+export const BOT_STRATEGIES: readonly BotStrategy[] = ['ALWAYS_FOLD', 'RANDOM_LEGAL_ACTION', 'CALL_HEAVY', 'RAISE_HEAVY', 'ALL_IN_RANDOMLY', 'TIMEOUT_ALWAYS', 'SHOVE_HEAVY'];
 
 function pct(rng: RandomSource, p: number): boolean {
   return uniformInt(rng, 100) < p;
@@ -47,6 +47,13 @@ export function decide(strategy: BotStrategy, legal: LegalActions, rng: RandomSo
     case 'ALL_IN_RANDOMLY':
       if (legal.canAllIn && pct(rng, 20)) return { type: 'ALL_IN' };
       if (!legal.canCheck && pct(rng, 40)) return { type: 'FOLD' };
+      return passive(legal);
+    case 'SHOVE_HEAVY':
+      // Shoves 3 decisions in 7: multi-way all-ins bust whole tables in one hand,
+      // so the field can drop from many tables straight to the bubble.
+      if (legal.canAllIn && pct(rng, 43)) return { type: 'ALL_IN' };
+      if (legal.canRaise && pct(rng, 14)) return { type: 'RAISE', amount: legal.minTo };
+      if (!legal.canCheck && pct(rng, 14)) return { type: 'FOLD' };
       return passive(legal);
     case 'RANDOM_LEGAL_ACTION': {
       const options: PlayerActionIntent[] = [{ type: 'FOLD' }];

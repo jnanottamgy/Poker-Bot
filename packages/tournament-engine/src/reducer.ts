@@ -8,6 +8,7 @@ import { onCommandFailed, onHandResult, onPlayerRemoved, onPlayerSeated, onStack
 import * as admin from './admin';
 import { lateRegister, reenter } from './late';
 import { assignDeferredPositions } from './eliminations';
+import { ensureProgress } from './balance';
 
 /**
  * Johnny — the algorithmic Tournament Director. A pure reducer: the same
@@ -19,6 +20,7 @@ export function directorReduce(state: DirectorState, input: DirectorInput, ctx: 
   const d = beginDraft(state, ctx);
   try {
     dispatch(d, input);
+    ensureProgress(d);
   } catch (err) {
     if (err instanceof DirectorError) {
       return { state, effects: [], events: [], reply: { ok: false, code: err.code, message: err.message } };

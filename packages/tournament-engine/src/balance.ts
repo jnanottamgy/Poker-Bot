@@ -50,3 +50,18 @@ export function rebalance(d: Draft): void {
     });
   }
 }
+
+/**
+ * Liveness guard, run after every input: when no ACTIVE table can deal a hand
+ * (all have fewer than two players) and no move is in flight, no table report
+ * will ever arrive to trigger balancing again, so the field is merged now
+ * (balancing or final-table formation). O(1) unless it fires; it never fires in
+ * a state that would otherwise progress.
+ */
+export function ensureProgress(d: Draft): void {
+  const max = d.index.maxCount();
+  if (max !== null && max >= 2) return;
+  if (!balancingAllowed(d)) return;
+  if (Object.keys(d.s.pendingMoves).length > 0) return;
+  rebalance(d);
+}

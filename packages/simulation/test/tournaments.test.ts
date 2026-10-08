@@ -44,6 +44,27 @@ describe('complete tournaments through the real engines', () => {
     }
   }, 120_000);
 
+  it('a field that busts straight to the bubble still merges and finishes', () => {
+    // Seeds that stalled before the fix: hand-for-hand started at the bubble while the field
+    // already fit the final table, and when the bubble burst no balancing ever ran again —
+    // the last players sat alone at separate tables forever.
+    const stalled: Array<[number, string, [number, number] | undefined]> = [
+      [20, 'hunt-89', undefined],
+      [20, 'hunt-124', undefined],
+      [20, 'hunt-137', undefined],
+      [27, 'hunt-92', undefined],
+      [27, 'hunt-145', undefined],
+      [20, 'hunt-80', [0, 300]],
+      [27, 'hunt-94', [0, 300]],
+    ];
+    for (const [players, seed, latency] of stalled) {
+      const r = runSimulatedTournament({ players, seed, strategyMix: { SHOVE_HEAVY: 1 }, maxVirtualMs: 6 * 3_600_000, ...(latency ? { linkLatencyMs: latency } : {}) });
+      expect(r.finished, `${players}/${seed}: ${r.host.director.status}, ${r.host.director.counters.active} active`).toBe(true);
+      expect(r.problems).toEqual([]);
+      expect(kinds(r.host.tournamentEvents, 'FINAL_TABLE_FORMED')).toHaveLength(1);
+    }
+  });
+
   it('hand-for-hand runs at the bubble when several tables remain', () => {
     let seen = false;
     for (let s = 0; s < 6 && !seen; s++) {

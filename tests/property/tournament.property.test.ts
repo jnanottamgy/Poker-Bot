@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BotStrategy } from '@jpb/simulation';
 import { replayRun, runDigest, runSimulatedTournament, SIM_T0, simulationServerSeed, simulationTournamentId } from '@jpb/simulation';
 
-const STRATEGIES: BotStrategy[] = ['ALWAYS_FOLD', 'RANDOM_LEGAL_ACTION', 'CALL_HEAVY', 'RAISE_HEAVY', 'ALL_IN_RANDOMLY', 'TIMEOUT_ALWAYS'];
+const STRATEGIES: BotStrategy[] = ['ALWAYS_FOLD', 'RANDOM_LEGAL_ACTION', 'CALL_HEAVY', 'RAISE_HEAVY', 'ALL_IN_RANDOMLY', 'TIMEOUT_ALWAYS', 'SHOVE_HEAVY'];
 
 const mixArb = fc
   .array(fc.integer({ min: 0, max: 5 }), { minLength: STRATEGIES.length, maxLength: STRATEGIES.length })
@@ -31,6 +31,18 @@ describe('tournament properties (random fields, mixes, seeds, latencies)', () =>
         expect(r.problems).toEqual([]);
         expect(r.host.alerts).toEqual([]);
         expect(r.host.director.counters.totalChips).toBe(players * r.host.initialConfig.startingStack);
+      }),
+      { numRuns: 150 },
+    );
+  }, 300_000);
+
+  it('completes when whole tables bust at once (the field can drop straight to the bubble)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 8, max: 45 }), fc.stringMatching(/^[a-z0-9-]{1,12}$/), latencyArb, (players, seed, latency) => {
+        const r = runSimulatedTournament({ players, seed, strategyMix: { SHOVE_HEAVY: 1 }, recordEvents: false, ...(latency ? { linkLatencyMs: latency } : {}) });
+        expect(r.finished, `not finished: ${r.host.director.status}, ${r.host.director.counters.active} active`).toBe(true);
+        expect(r.problems).toEqual([]);
+        expect(r.host.alerts).toEqual([]);
       }),
       { numRuns: 150 },
     );

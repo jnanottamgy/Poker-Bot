@@ -44,8 +44,18 @@ try {
     console.log('alerts', JSON.stringify((await fx.store.repos.q.query('SELECT code, message FROM alerts')).rows));
     console.log('dispatcher', JSON.stringify(fx.rt.dispatcher.stats()));
     console.log('faults', JSON.stringify(fx.rt.node.stats().actors.filter((a) => a.faulted || a.status !== 'active')));
-    const ev = await fx.store.repos.directorLogs.recentEvents(t.id, null, 15);
-    for (const e of ev) console.log('event', e.seq, e.kind, JSON.stringify(e.payload).slice(0, 300));
+    const ev = await fx.store.repos.directorLogs.recentEvents(t.id, null, Number(process.env.DBG_EVENTS ?? 15));
+    for (const e of ev) console.log('event', e.seq, e.kind, JSON.stringify(e.payload).slice(0, Number(process.env.DBG_WIDTH ?? 300)));
+    if (process.env.DBG_INPUTS) {
+      const inputs = await fx.store.repos.q.query<{ seq: number; type: string; input: unknown }>(`SELECT seq, type, input FROM director_inputs WHERE tournament_id = $1 ORDER BY seq`, [t.id]);
+      for (const r of inputs.rows) {
+        const x = r.input as { input?: Record<string, unknown> } & Record<string, unknown>;
+        const inner = (x.input ?? x) as Record<string, unknown>;
+        const rep = inner.report as { tableId?: string; handNumber?: number; busted?: Array<{ playerId: string }>; players?: Array<{ playerId: string; finalStack: number }> } | undefined;
+        const brief = rep ? `${rep.tableId?.slice(-2)} h${rep.handNumber} busted=${(rep.busted ?? []).map((b) => b.playerId.slice(-4)).join(',')} left=${(rep.players ?? []).filter((p) => p.finalStack > 0).map((p) => p.playerId.slice(-4)).join(',')}` : JSON.stringify(inner).slice(0, 220);
+        console.log('input', r.seq, r.type, brief);
+      }
+    }
   }
 } finally {
   await fx.stop();
