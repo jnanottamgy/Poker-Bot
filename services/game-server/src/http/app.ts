@@ -7,6 +7,8 @@ import { HttpError } from './errors';
 import type { HttpContext } from './context';
 import { registerAdminAuthRoutes } from './routes/admin-auth';
 import { registerHealthRoutes } from './routes/health';
+import { registerAdminUserRoutes } from './routes/admin-users';
+import { registerAuditAndAlertRoutes } from './routes/admin-audit-alerts';
 
 export interface BuildHttpOptions {
   logger?: boolean | { level: string };
@@ -69,6 +71,8 @@ export async function buildHttpApp(ctx: HttpContext, opts: BuildHttpOptions = {}
 
   registerHealthRoutes(app, ctx);
   registerAdminAuthRoutes(app, ctx);
+  registerAdminUserRoutes(app, ctx);
+  registerAuditAndAlertRoutes(app, ctx);
   for (const mod of opts.modules ?? []) await mod(app, ctx);
   return app;
 }
