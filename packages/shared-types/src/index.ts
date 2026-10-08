@@ -7,3 +7,5 @@ export * from './tournament';
 export * from './roles';
 export * from './audit';
 export * from './protocol';
+export * from './fairness';
+export * from './api';
