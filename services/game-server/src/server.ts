@@ -53,6 +53,8 @@ export interface JpbServer {
   url: string | null;
   listen(): Promise<string>;
   close(): Promise<void>;
+  /** Chaos testing: dies like a killed process — sockets dropped, no snapshots, leases left to expire. */
+  crash(): Promise<void>;
 }
 
 export interface BuildServerOptions {
@@ -64,6 +66,9 @@ export interface BuildServerOptions {
   runtimeOverrides?: Parameters<typeof createGameRuntime>[0]['nodeOverrides'];
   /** Skip migrations (tests that already migrated). */
   skipMigrations?: boolean;
+  /** Redis key prefix for leases, membership and presence (isolated test clusters). */
+  redisPrefix?: string;
+  membershipTiming?: Parameters<typeof createGameRuntime>[0]['membershipTiming'];
   monitorEveryMs?: number;
 }
 
@@ -108,6 +113,8 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
     metrics,
     logger: { info: (o, m) => logRef.current?.info(o, m), warn: (o, m) => logRef.current?.warn(o, m), error: (o, m) => logRef.current?.error(o, m) },
     ...(opts.runtimeOverrides ? { nodeOverrides: opts.runtimeOverrides } : {}),
+    ...(opts.redisPrefix ? { redisPrefix: opts.redisPrefix } : {}),
+    ...(opts.membershipTiming ? { membershipTiming: opts.membershipTiming } : {}),
   });
   const game = runtime.game;
   const registration = new RegistrationService(store, game);
@@ -119,7 +126,7 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
         bus,
         sessions: ctx.sessions,
         metrics,
-        presence: redis ? new RedisPresenceStore(redis) : new MemoryPresenceStore(),
+        presence: redis ? new RedisPresenceStore(redis, `${opts.redisPrefix ?? 'jpb:'}presence:`) : new MemoryPresenceStore(),
         log: { warn: (o, m) => logRef.current?.warn(o as object, m ?? ''), error: (o, m) => logRef.current?.error(o as object, m ?? '') },
       })
     : null;
@@ -185,6 +192,17 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
       if (!opts.bus) await bus.close();
       redis?.disconnect();
       if (!opts.db) await store.close();
+    },
+    async crash() {
+      for (const c of gateway?.connections() ?? []) c.socket.terminate();
+      await demos.shutdown();
+      await live.stop();
+      await monitor.stop();
+      await runtime.dispatcher.stop();
+      await runtime.node.kill();
+      await app.close().catch(() => undefined);
+      if (!opts.bus) await bus.close().catch(() => undefined);
+      redis?.disconnect();
     },
   };
   return server;

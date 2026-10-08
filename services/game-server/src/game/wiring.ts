@@ -6,8 +6,9 @@ import type { MetricsCatalog } from '../observability/catalog';
 import type { ActorFault, RuntimeLogger } from '../runtime/actor-host';
 import { createNodeRuntime, NodeRuntime } from '../runtime/node-runtime';
 import type { NodeRuntimeOptions } from '../runtime/node-runtime';
-import { MemoryLeaseManager } from '../runtime/lease';
-import { MemoryMembership } from '../runtime/membership';
+import { MemoryLeaseManager, RedisLeaseManager } from '../runtime/lease';
+import { MemoryMembership, RedisMembership } from '../runtime/membership';
+import type { MembershipTiming } from '../runtime/membership';
 import { PostgresDirectorLog, PostgresTableLog } from '../runtime/pg-actor-log';
 import { storeTransactions } from '../runtime/transactions';
 import { newId } from '../security/ids';
@@ -33,8 +34,11 @@ export interface GameRuntimeDeps {
   redis?: Redis;
   metrics?: MetricsCatalog;
   logger?: RuntimeLogger;
-  /** Tests: overrides for a single in-process node (lease timings, verifyOnRecovery...). */
+  /** Tests: overrides for in-process nodes (lease timings, verifyOnRecovery...). With `redis`, leases and membership use Redis. */
   nodeOverrides?: Partial<Omit<NodeRuntimeOptions, 'kinds' | 'bus' | 'transactions'>>;
+  /** Redis key prefix for leases and membership (isolates test clusters; default 'jpb:'). */
+  redisPrefix?: string;
+  membershipTiming?: MembershipTiming;
   dispatcher?: { sweepMs?: number; concurrency?: number };
 }
 
@@ -77,13 +81,17 @@ export function createGameRuntime(deps: GameRuntimeDeps): GameRuntime {
 
   const catalog = { list: (kind: string) => ref.game!.catalog().list(kind) };
   let node: NodeRuntime;
-  if (deps.nodeOverrides) {
+  if (deps.nodeOverrides || deps.redisPrefix || deps.membershipTiming) {
+    const self = { nodeId: env.nodeId, role: env.role, startedAt: Date.now(), capacity: 1 };
+    const prefix = deps.redisPrefix ?? 'jpb:';
     node = new NodeRuntime({
       nodeId: env.nodeId,
       role: env.role,
       bus,
-      leases: new MemoryLeaseManager(),
-      membership: new MemoryMembership({ nodeId: env.nodeId, role: env.role, startedAt: Date.now(), capacity: 1 }),
+      leases: deps.redis ? new RedisLeaseManager(deps.redis, `${prefix}lease:`) : new MemoryLeaseManager(),
+      membership: deps.redis
+        ? new RedisMembership(self, deps.redis, { prefix, ...deps.membershipTiming })
+        : new MemoryMembership(self, undefined, undefined, deps.membershipTiming),
       transactions: storeTransactions(store),
       kinds,
       catalog,

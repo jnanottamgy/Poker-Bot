@@ -1,0 +1,51 @@
+// Debug harness: crash a node mid-tournament, restart on the same DB, dump state.
+import type { TournamentPublicSummary } from '@jpb/shared-types';
+import type { DirectorState } from '@jpb/tournament-engine';
+import { buildServer } from '../src/server';
+import { createTestDatabase } from '../test/helpers/db';
+import { Http } from '../test/helpers/client';
+import { ORIGIN, ResilientBot, chaosEnv, setupTournament, waitFor, wsUrlOf } from '../../../tests/chaos/helpers';
+
+const db = await createTestDatabase(`dbgcrash_${process.pid}`);
+let server = await buildServer(chaosEnv('n1'), { db, runtimeOverrides: { verifyOnRecovery: true, rebalanceIntervalMs: 300 }, monitorEveryMs: 1000 });
+let base = await server.listen();
+const { admin, tournament, https } = await setupTournament([base], 18, 'DBGCR');
+const bots = https.map((h) => new ResilientBot(h, tournament.id, () => wsUrlOf(base)));
+await Promise.all(bots.map((b) => b.start()));
+await admin.ok('POST', `/api/admin/tournaments/${tournament.id}/start`, {});
+const summary = () => new Http(base, ORIGIN).ok<TournamentPublicSummary>('GET', `/api/public/tournaments/${tournament.joinCode}/summary`);
+await waitFor(async () => (await summary()).counters.handsCompleted >= 4, 60_000);
+console.log('before crash', JSON.stringify((await summary()).counters));
+const t0 = Date.now();
+const step = (n: string) => console.log(`  ${n} +${Date.now() - t0}ms`);
+for (const c of server.gateway?.connections() ?? []) c.socket.terminate();
+step('sockets');
+await server.demos.shutdown();
+step('demos');
+await server.runtime.dispatcher.stop();
+step('dispatcher');
+await server.runtime.node.kill();
+step('kill');
+const gw = server.gateway!;
+const shut = gw.shutdown().then(() => step('gateway.shutdown'));
+await Promise.race([shut, new Promise((r) => setTimeout(r, 5000))]);
+step(`after gateway wait; wss clients=${server.app.websocketServer.clients.size} conns=${gw.connections().length}`);
+const closing = server.app.close().then(() => step('app.close'));
+await Promise.race([closing, new Promise((r) => setTimeout(r, 8000))]);
+step(`after close wait; wss clients=${server.app.websocketServer.clients.size}`);
+console.log('crashed');
+server = await buildServer(chaosEnv('n2'), { db, skipMigrations: true, runtimeOverrides: { verifyOnRecovery: true, rebalanceIntervalMs: 300 }, monitorEveryMs: 1000 });
+base = await server.listen();
+for (const h of [...https, admin]) Object.assign(h, { base });
+for (let i = 0; i < 20; i++) {
+  await new Promise((r) => setTimeout(r, 1000));
+  const s = await summary().catch((e) => ({ err: String(e) }));
+  const stats = server.runtime.node.stats();
+  console.log(i, JSON.stringify((s as TournamentPublicSummary).counters ?? s), 'actors', stats.actors.map((a) => `${a.kind}:${a.actorId.slice(-3)}:${a.status}:${a.seq}:t${a.timers}${a.faulted ? ':F ' + a.fault?.message : ''}`).join(' '), 'outbox', await server.store.repos.outbox.countPending(), JSON.stringify(server.runtime.dispatcher.stats()));
+}
+const d = await server.runtime.game.directorQuery<DirectorState>(tournament.id, { q: 'STATE' });
+console.log('director', d?.status, JSON.stringify(d?.pendingMoves));
+for (const b of bots) b.stop();
+await server.close();
+await db.close();
+process.exit(0);
