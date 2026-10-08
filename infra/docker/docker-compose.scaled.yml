@@ -4,7 +4,7 @@
 #
 #   docker compose -f docker-compose.yml -f infra/docker/docker-compose.scaled.yml up -d --scale gateway=3 --scale worker=4
 #
-# Size the pools with tests/load before an event; see docs/SCALING.md.
+# Size the pools with tests/load before an event; see docs/ARCHITECTURE.md §9 and docs/TESTING.md.
 services:
   app:
     profiles: ['single-node-only']

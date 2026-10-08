@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import type { PlayerTableView, ServerMessage, TournamentListItemDto } from '@jpb/shared-types';
 import { loadEnv } from '../../services/game-server/src/config/env';
+import { Database, migrate } from '../../services/game-server/src/persistence/db';
+import { TEST_DATABASE_URL } from '../../services/game-server/test/helpers/db';
 import type { ServerEnv } from '../../services/game-server/src/config/env';
 import { Http } from '../../services/game-server/test/helpers/client';
 import { chooseAction, fastConfig } from '../../services/game-server/test/helpers/game';
@@ -123,3 +125,28 @@ export class ResilientBot {
 }
 
 export const wsUrlOf = (base: string) => `${base.replace(/^http/, 'ws')}/ws`;
+
+/** A database in its own schema whose connections carry a unique application_name (so this test can kill only its own backends). */
+export async function isolatedDatabase(name: string): Promise<{ db: Database; appName: string; close: () => Promise<void> }> {
+  const schema = `t_${name}_${process.pid}`.toLowerCase();
+  const appName = `jpb_${schema}`;
+  const admin = new Database(TEST_DATABASE_URL!, 1);
+  await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await admin.query(`CREATE SCHEMA ${schema}`);
+  await admin.close();
+  const url = new URL(TEST_DATABASE_URL!);
+  url.searchParams.set('application_name', appName);
+  const db = new Database(url.toString(), 10, { searchPath: schema });
+  await migrate(db);
+  return {
+    db,
+    appName,
+    close: async () => {
+      await db.close();
+      const cleanup = new Database(TEST_DATABASE_URL!, 1);
+      await cleanup.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+      await cleanup.close();
+    },
+  };
+}
+

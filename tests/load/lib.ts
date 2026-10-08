@@ -28,6 +28,8 @@ export interface LoadOptions {
   onProgress?: (p: LoadProgress) => void;
   /** Origin header (defaults to base). */
   origin?: string;
+  /** Probability that a bot drops its connection after an action and reconnects 0.5–3 s later (default 0). */
+  churn?: number;
 }
 
 export interface LoadProgress {
@@ -58,6 +60,9 @@ export interface LoadResult {
   durationMs: number;
   registrationMs: Percentiles;
   connectMs: Percentiles;
+  /** Reconnect → authoritative snapshot (churn only). */
+  reconnectMs: Percentiles;
+  reconnects: number;
   actionRoundTripMs: Percentiles;
   actions: number;
   actionsRejected: number;
@@ -180,64 +185,99 @@ export async function runLoad(opts: LoadOptions): Promise<LoadResult> {
   const sockets: WebSocket[] = [];
   const timers = new Set<NodeJS.Timeout>();
 
-  await pool(clients, concurrency, async (c, i) => {
+  const reconnectMs: number[] = [];
+  let reconnects = 0;
+  const churn = Math.max(0, Math.min(1, opts.churn ?? 0));
+
+  /** One phone: connects, answers its decisions, and (churn) sometimes drops and comes back like a flaky network. */
+  const play = (c: Client, i: number): Promise<void> => {
     const rand = rng(i + 1);
     const answered = new Set<string>();
-    await new Promise<void>((resolve) => {
-      const t0 = performance.now();
-      let first = true;
-      const ws = new WebSocket(wsUrl, { headers: { cookie: c.cookie(), origin } });
-      sockets.push(ws);
-      const done = () => resolve();
-      ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', v: 1, audience: 'PLAYER', tournamentId: tournament.id, resume: null })));
-      ws.on('error', (e) => {
-        err(e);
-        done();
-      });
-      ws.on('close', () => {
-        if (!stopping) disconnects++;
-        done();
-      });
-      ws.on('message', (data: Buffer) => {
-        framesIn++;
-        bytesIn += data.length;
-        const m = JSON.parse(String(data)) as ServerMessage;
-        framesByType[m.t] = (framesByType[m.t] ?? 0) + 1;
-        if (m.t === 'snapshot') {
-          if (first) connectMs.push(performance.now() - t0);
-          first = false;
+    let ws: WebSocket;
+    const open = (reconnect: boolean): Promise<void> =>
+      new Promise<void>((resolve) => {
+        const t0 = performance.now();
+        let first = true;
+        let intentional = false;
+        ws = new WebSocket(wsUrl, { headers: { cookie: c.cookie(), origin } });
+        sockets.push(ws);
+        const self = ws;
+        const done = () => resolve();
+        self.on('open', () => self.send(JSON.stringify({ t: 'hello', v: 1, audience: 'PLAYER', tournamentId: tournament.id, resume: null })));
+        self.on('error', (e) => {
+          err(e);
           done();
-          if (m.snapshot.audience === 'PLAYER') act(m.snapshot.table);
-        } else if (m.t === 'table_update') act(m.view as PlayerTableView);
-        else if (m.t === 'action_result') {
-          const sent = pending.get(m.actionId);
-          if (sent !== undefined) {
-            rtt.push(performance.now() - sent);
-            pending.delete(m.actionId);
+        });
+        self.on('close', () => {
+          if (!stopping && !intentional) disconnects++;
+          done();
+        });
+        self.on('message', (data: Buffer) => {
+          framesIn++;
+          bytesIn += data.length;
+          const m = JSON.parse(String(data)) as ServerMessage;
+          framesByType[m.t] = (framesByType[m.t] ?? 0) + 1;
+          if (m.t === 'snapshot') {
+            if (first) (reconnect ? reconnectMs : connectMs).push(performance.now() - t0);
+            first = false;
+            done();
+            if (m.snapshot.audience === 'PLAYER') act(m.snapshot.table);
+          } else if (m.t === 'table_update') act(m.view as PlayerTableView);
+          else if (m.t === 'action_result') {
+            const sent = pending.get(m.actionId);
+            if (sent !== undefined) {
+              rtt.push(performance.now() - sent);
+              pending.delete(m.actionId);
+            }
+            if (!m.ok) rejected++;
           }
-          if (!m.ok) rejected++;
+        });
+        const drop = () => {
+          // Flaky network: close now, come back 0.5–3 s later and resync from the snapshot.
+          intentional = true;
+          self.close();
+          const timer = setTimeout(() => {
+            timers.delete(timer);
+            if (stopping) return;
+            reconnects++;
+            void open(true);
+          }, 500 + Math.floor(rand() * 2500));
+          timers.add(timer);
+        };
+        function act(view: PlayerTableView | null) {
+          const legal = view?.you?.legal;
+          if (!view || !legal || stopping) return;
+          const key = `${view.tableId}:${view.hand?.handId}:${view.hand?.turnVersion}`;
+          if (answered.has(key)) return;
+          answered.add(key);
+          const r = rand();
+          const intent: { type: 'CHECK' | 'CALL' | 'FOLD' | 'RAISE' | 'BET' | 'ALL_IN'; amount?: number } =
+            r < 0.05 && legal.canAllIn
+              ? { type: 'ALL_IN' }
+              : r < 0.15 && legal.canRaise
+                ? { type: 'RAISE', amount: legal.minTo }
+                : r < 0.2 && legal.canBet
+                  ? { type: 'BET', amount: legal.minTo }
+                  : legal.canCheck
+                    ? { type: 'CHECK' }
+                    : r < 0.65 && legal.canCall
+                      ? { type: 'CALL' }
+                      : { type: 'FOLD' };
+          const timer = setTimeout(() => {
+            timers.delete(timer);
+            if (stopping || self.readyState !== WebSocket.OPEN) return;
+            const actionId = randomUUID();
+            pending.set(actionId, performance.now());
+            actions++;
+            self.send(JSON.stringify({ t: 'action', actionId, tableId: view.tableId, type: intent.type, ...(intent.amount !== undefined ? { amount: intent.amount } : {}), tableStateVersion: view.hand?.turnVersion ?? 0 }));
+            if (churn > 0 && rand() < churn) drop();
+          }, thinkLo + Math.floor(rand() * Math.max(1, thinkHi - thinkLo)));
+          timers.add(timer);
         }
       });
-      function act(view: PlayerTableView | null) {
-        const legal = view?.you?.legal;
-        if (!view || !legal || stopping) return;
-        const key = `${view.tableId}:${view.hand?.handId}:${view.hand?.turnVersion}`;
-        if (answered.has(key)) return;
-        answered.add(key);
-        const r = rand();
-        const intent = legal.canCheck ? { type: 'CHECK' as const } : r < 0.08 && legal.canAllIn ? { type: 'ALL_IN' as const } : r < 0.6 && legal.canCall ? { type: 'CALL' as const } : { type: 'FOLD' as const };
-        const timer = setTimeout(() => {
-          timers.delete(timer);
-          if (stopping || ws.readyState !== WebSocket.OPEN) return;
-          const actionId = randomUUID();
-          pending.set(actionId, performance.now());
-          actions++;
-          ws.send(JSON.stringify({ t: 'action', actionId, tableId: view.tableId, type: intent.type, tableStateVersion: view.hand?.turnVersion ?? 0 }));
-        }, thinkLo + Math.floor(rand() * Math.max(1, thinkHi - thinkLo)));
-        timers.add(timer);
-      }
-    });
-  });
+    return open(false);
+  };
+  await pool(clients, concurrency, (c, i) => play(c, i));
 
   const started = Date.now();
   await admin.req('POST', `/api/admin/tournaments/${tournament.id}/start`, {});
@@ -278,6 +318,8 @@ export async function runLoad(opts: LoadOptions): Promise<LoadResult> {
     durationMs,
     registrationMs: percentiles(regMs),
     connectMs: percentiles(connectMs),
+    reconnectMs: percentiles(reconnectMs),
+    reconnects,
     actionRoundTripMs: percentiles(rtt),
     actions,
     actionsRejected: rejected,

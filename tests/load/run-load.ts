@@ -1,6 +1,6 @@
 // Load test CLI. Example (server started with NODE_ENV=development RATE_LIMIT_SCALE=1000):
 //   npm run load --workspace @jpb/tests -- --base http://localhost:8080 --players 1000 --admin admin:secret
-// Options: --players N  --concurrency N  --think 300-1500  --no-speed  --max-minutes 30  --json
+// Options: --players N  --concurrency N  --think 300-1500  --churn 0.05  --no-speed  --max-minutes 30  --json
 import { runLoad } from './lib';
 
 const args = process.argv.slice(2);
@@ -27,6 +27,7 @@ const result = await runLoad({
   thinkMs: think,
   speed: !flag('no-speed'),
   maxDurationMs: Number(arg('max-minutes', '30')) * 60_000,
+  churn: Number(arg('churn', '0')),
   onProgress: (p) =>
     console.log(
       `[${Math.round(p.elapsedMs / 1000)}s] ${p.status} players=${p.active} tables=${p.tables} hands=${p.hands} actions=${p.actions} frames=${p.framesIn} sockets=${p.openSockets}`,
@@ -39,6 +40,7 @@ else {
   console.log(`\nTournament ${result.joinCode}: ${result.status} after ${Math.round(result.durationMs / 1000)} s, ${result.hands} hands`);
   console.log(`Registration     ${pc(result.registrationMs)}`);
   console.log(`Connect→snapshot ${pc(result.connectMs)}`);
+  if (result.reconnects) console.log(`Reconnect→snap   ${pc(result.reconnectMs)} · ${result.reconnects} reconnects`);
   console.log(`Action RTT       ${pc(result.actionRoundTripMs)}`);
   console.log(`Actions ${result.actions} (${result.actionsPerSecond}/s, ${result.actionsRejected} rejected) · frames ${result.framesIn} (${result.framesPerSecond}/s, ${Math.round(result.bytesIn / 1024)} KiB) · disconnects ${result.disconnects}`);
   console.log(`Frames by type: ${Object.entries(result.framesByType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(' · ')}`);

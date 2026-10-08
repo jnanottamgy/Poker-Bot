@@ -30,6 +30,10 @@ the poker; staff handle people and exceptions.
 | CRITICAL chip-conservation alert | Johnny already holds the affected tables. Do not release. Check Alerts → affected table → internals; contact the technical lead. Every chip move is in the hand history. |
 | Server/laptop restarted | Wait for `/readyz`; tournament resumes from the database automatically. Players reconnect on their own. Check Overview → chip conservation is green. |
 | Internet dropped (tunnel mode) | Players reconnect when it returns; their timers keep running server-side. If the outage is long, **Pause after hand** and announce. |
+| Multi-node: one server died | Nothing to do. Within a few seconds the surviving nodes take over its tables and Johnny from the database (System shows the node gone); players reconnect automatically. Check Overview → chip conservation stays green. |
+| Multi-node: Redis restarted or unreachable | Tables stop accepting actions while their ownership cannot be confirmed (never two owners), then resume by themselves when Redis is back. Timers resume from their stored deadlines. If it lasts more than a minute, **Pause after hand** and announce. |
+| Database slow or restarting | Actions are acknowledged only once stored; players may see "confirming…" longer. Nothing is applied twice and nothing is lost. If `/readyz` stays red, check the PostgreSQL container and disk space. |
+| A table shows TABLE CRASHED (critical alert) | Johnny halted that table rather than risk a wrong state. Do not touch it; note the alert details and contact the technical lead (System → actor internals). Other tables keep playing. |
 
 ## After the final hand
 
