@@ -41,6 +41,7 @@ else {
   console.log(`Connect→snapshot ${pc(result.connectMs)}`);
   console.log(`Action RTT       ${pc(result.actionRoundTripMs)}`);
   console.log(`Actions ${result.actions} (${result.actionsPerSecond}/s, ${result.actionsRejected} rejected) · frames ${result.framesIn} (${result.framesPerSecond}/s, ${Math.round(result.bytesIn / 1024)} KiB) · disconnects ${result.disconnects}`);
+  console.log(`Frames by type: ${Object.entries(result.framesByType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(' · ')}`);
   if (result.errors.length) console.log(`Errors (${result.errors.length}):\n  ${result.errors.join('\n  ')}`);
 }
 process.exit(result.completed && result.errors.length === 0 ? 0 : 1);

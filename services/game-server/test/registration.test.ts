@@ -48,6 +48,9 @@ describe.skipIf(!TEST_DATABASE_URL)('join, register and rejoin over HTTP', () =>
     async publicSummary() {
       return null;
     },
+    async reenterPlayer() {
+      return { ok: true, code: null, message: null };
+    },
   };
 
   beforeAll(async () => {

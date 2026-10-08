@@ -24,7 +24,11 @@ export interface RegistrationDirectorPort {
   ): Promise<{ ok: boolean; code: string | null; message: string | null }>;
   /** Live counters/clock for the join page; null when the director is not running yet. */
   publicSummary(tournamentId: string): Promise<TournamentPublicSummary | null>;
+  /** A new entry for an eliminated player (re-entry rules are enforced by the director). */
+  reenterPlayer(tournamentId: string, input: { playerId: string; entryId: string }): Promise<{ ok: boolean; code: string | null; message: string | null }>;
 }
+
+export type ReentryResult = { ok: true; entryId: string; entryNumber: number } | { ok: false; code: string; message: string };
 
 export type RegistrationResult =
   | { ok: true; player: PlayerRecord; entryId: string; status: TournamentPlayerStatus; rejoinCode: string }
@@ -145,8 +149,43 @@ export class RegistrationService {
     const player = await this.store.repos.players.getByPublicId(t.id, publicId.trim().toUpperCase());
     const hash = player ? await this.store.repos.players.getRejoinCodeHash(player.id) : null;
     // Always spend comparable time, even for unknown players.
-    const ok = await verifyRejoinCode(normalized, hash ?? 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    const ok = await verifyRejoinCode(normalized, hash ?? 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
     return ok && player ? player : null;
+  }
+
+  /**
+   * Re-entry (spec: re-entry until level N, max entries per player): a new
+   * entry row with a new registration number, then Johnny seats it with a
+   * fresh starting stack. The previous entry keeps its elimination record.
+   */
+  async reenter(playerId: string, opts: { byStaff?: { adminId: string } } = {}): Promise<ReentryResult> {
+    const player = await this.store.repos.players.getPlayer(playerId);
+    const t = player ? await this.store.repos.tournaments.get(player.tournamentId) : null;
+    if (!player || !t) return { ok: false, code: 'NOT_FOUND', message: 'Player not found.' };
+    if (!t.config.reentry.enabled) return { ok: false, code: 'REENTRY_DISABLED', message: 'This tournament does not allow re-entry.' };
+    const current = await this.store.repos.players.getCurrentEntry(playerId);
+    if (!current || current.status !== 'ELIMINATED') return { ok: false, code: 'NOT_ELIMINATED', message: 'Only eliminated players can re-enter.' };
+    const entry = await this.store.transaction(async (repos) => {
+      const seq = await repos.tournaments.nextRegistrationSeq(t.id);
+      const created = await repos.players.createEntry({
+        entryId: newId('ent'),
+        tournamentId: t.id,
+        playerId,
+        registrationSeq: seq,
+        entryNumber: current.entryNumber + 1,
+        status: 'REGISTERED',
+        clientSeed: null,
+        stack: 0,
+      });
+      if (opts.byStaff) await repos.players.updateEntryState(created.entryId, { approvedAt: new Date(), approvedBy: opts.byStaff.adminId });
+      return created;
+    });
+    const reply = await this.director.reenterPlayer(t.id, { playerId, entryId: entry.entryId });
+    if (!reply.ok) {
+      await this.store.repos.players.updateEntryState(entry.entryId, { status: 'WITHDRAWN' });
+      return { ok: false, code: reply.code ?? 'REJECTED', message: reply.message ?? 'Re-entry was not accepted.' };
+    }
+    return { ok: true, entryId: entry.entryId, entryNumber: entry.entryNumber };
   }
 
   /** Issues a fresh rejoin code (staff helps a player who switched phones). */

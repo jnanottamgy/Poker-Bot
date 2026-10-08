@@ -103,4 +103,38 @@ describe.skipIf(!TEST_DATABASE_URL)('game runtime: complete tournaments on Postg
     const alerts = await fx.store.repos.q.query(`SELECT code, message FROM alerts WHERE tournament_id = $1`, [t.id]);
     expect(alerts.rows).toEqual([]);
   }, 200_000);
+
+  it('an eliminated player re-enters with a fresh stack and the tournament still completes', async () => {
+    const config = fastConfig(24, { joinCode: 'E2EC01', name: 'Re-entry', maxPlayers: 30, reentry: { enabled: true, maxEntriesPerPlayer: 2, untilLevel: 30 } });
+    const t = await fx.rt.game.createTournament({ config, createdBy: null });
+    expect((await fx.rt.game.directorInput(t.id, { type: 'OPEN_REGISTRATION' })).ok).toBe(true);
+    for (let i = 0; i < 24; i++) expect((await fx.registration.register(t.joinCode, { fields: { name: `R ${i + 1}` }, accessCode: null, clientSeed: null })).ok).toBe(true);
+    expect((await fx.rt.game.start(t.id, ADMIN, null)).ok).toBe(true);
+    let reentered: string | null = null;
+    const { summary } = await playUntilComplete(fx, t.id, {
+      timeoutMs: 150_000,
+      onTick: async () => {
+        if (reentered) return;
+        const busted = await fx.store.repos.q.query<{ player_id: string }>(`SELECT player_id FROM tournament_players WHERE tournament_id = $1 AND status = 'ELIMINATED' LIMIT 1`, [t.id]);
+        const pid = busted.rows[0]?.player_id;
+        if (!pid) return;
+        const r = await fx.registration.reenter(pid);
+        expect(r, JSON.stringify(r)).toMatchObject({ ok: true, entryNumber: 2 });
+        reentered = pid;
+        const again = await fx.registration.reenter(pid);
+        expect(again.ok).toBe(false);
+      },
+    });
+    expect(reentered).not.toBeNull();
+    expect(summary.status).toBe('COMPLETED');
+    const entries = await fx.store.repos.q.query<{ entry_number: number; status: string; finish_position: number | null }>(
+      `SELECT entry_number, status, finish_position FROM tournament_players WHERE player_id = $1 ORDER BY entry_number`,
+      [reentered],
+    );
+    expect(entries.rows.map((r) => r.entry_number)).toEqual([1, 2]);
+    expect(summary.counters.totalChips).toBe(25 * config.startingStack);
+    const alerts = await fx.store.repos.q.query(`SELECT code, message FROM alerts WHERE tournament_id = $1`, [t.id]);
+    expect(alerts.rows).toEqual([]);
+  }, 200_000);
 });
+

@@ -267,6 +267,11 @@ export class GameService implements GatewayBackend, RegistrationDirectorPort {
     return this.tournamentSummary(tournamentId);
   }
 
+  async reenterPlayer(tournamentId: string, input: { playerId: string; entryId: string }): Promise<{ ok: boolean; code: string | null; message: string | null }> {
+    const reply = await this.directorInput(tournamentId, { type: 'REENTER_PLAYER', playerId: input.playerId, entryId: input.entryId });
+    return { ok: reply.ok, code: reply.code, message: reply.message };
+  }
+
   // ------------------------------------------------------------------ catalog
 
   /** Actors that must run somewhere: directors of live tournaments and their open tables. */

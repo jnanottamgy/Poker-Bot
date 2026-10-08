@@ -319,6 +319,40 @@ describe.skipIf(!TEST_DATABASE_URL)('gateway fan-out over real sockets', () => {
     for (const c of [p, s, a]) c.close();
   });
 
+  it('large fields: per-player tournament events are coalesced into one summary per second for players and spectators', async () => {
+    const p = await TestClient.connect(node.url, { audience: 'PLAYER', tournamentId: T }, { cookie: cookies[2] });
+    const s = await TestClient.connect(node.url, { audience: 'SPECTATOR', tournamentId: T });
+    const a = await TestClient.connect(node.url, { audience: 'ADMIN', tournamentId: T }, { cookie: staff.cookie });
+    const big = (seq: number, kind: 'PLAYER_ELIMINATED' | 'ANNOUNCEMENT', registered: number) => {
+      const m = tournamentEvent(T, seq);
+      m.summary = { ...m.summary, counters: { ...m.summary.counters, registered, active: registered - seq + 2000 } };
+      if (kind === 'PLAYER_ELIMINATED') {
+        m.envelope.event = {
+          kind: 'PLAYER_ELIMINATED',
+          displayName: `Bust ${seq}`,
+          playersRemaining: registered - 1,
+          record: { playerId: 'x', entryId: 'e', finishPosition: 1, tiedCount: 1, eliminatedAt: 0, handId: 'h', handNumber: 1, tableId: TABLE, startingStackOfHand: 1, batchId: 'b' },
+        };
+      }
+      return m;
+    };
+    for (let seq = 2001; seq <= 2050; seq++) await bus.publish(channels.tournamentEvents(T), big(seq, 'PLAYER_ELIMINATED', 5000));
+    await bus.publish(channels.tournamentEvents(T), big(2051, 'ANNOUNCEMENT', 5000));
+    await a.waitFor((f) => f.t === 'tournament_event' && f.event.seq === 2051);
+    expect(a.of('tournament_event').filter((f) => f.event.seq >= 2001 && f.event.seq <= 2050)).toHaveLength(50);
+    for (const c of [p, s]) {
+      await c.waitFor((f) => f.t === 'tournament_summary', 3000);
+      expect(c.of('tournament_event').filter((f) => f.event.seq >= 2001 && f.event.seq <= 2050)).toHaveLength(0);
+      expect(c.of('tournament_summary')).toHaveLength(1);
+      expect((c.of('tournament_summary')[0]!.summary as { counters: { active: number } }).counters.active).toBe(5000 - 2050 + 2000);
+    }
+    await p.waitFor((f) => f.t === 'tournament_event' && f.event.seq === 2051);
+    // Small fields keep the full feed.
+    await bus.publish(channels.tournamentEvents(T), big(2052, 'PLAYER_ELIMINATED', 40));
+    await p.waitFor((f) => f.t === 'tournament_event' && f.event.seq === 2052);
+    for (const c of [p, s, a]) c.close();
+  });
+
   it('DISPLAY follows featured-table changes', async () => {
     const d = await TestClient.connect(node.url, { audience: 'DISPLAY', tournamentId: T });
     backend.featured.set(T, TABLE_B);

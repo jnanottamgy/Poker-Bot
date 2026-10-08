@@ -86,6 +86,37 @@ recovered state (deadlines are absolute server times stored in state) and
 continues. Players see a short "reconnecting" state; their chips, seat and the
 hand in progress are unchanged.
 
+### Messages between Johnny and the tables (durable outbox)
+
+Johnny and the tables never call each other directly. Every message one
+actor sends another — `SEAT_PLAYER`, `REMOVE_PLAYER`, blinds, holds from the
+director; `HAND_RESULT`, `PLAYER_REMOVED`, `PLAYER_SEATED`, status changes and
+command rejections from a table — is written to `actor_outbox` **in the same
+transaction** as the command that produced it. Nothing is lost if the
+process dies between commit and delivery.
+
+- The node that owns the **source** actor delivers its rows, strictly in `id`
+  order per (source, target) pair; different targets proceed in parallel.
+  A row is deleted only after the target durably processed it.
+- Delivery is triggered by a kick published after commit and backed by a
+  1-second sweep (lost kicks, restarts, failed deliveries). A source whose
+  actor is hosted nowhere is activated by the node placement assigns it to.
+- Receivers drop anything at or below the last sequence they applied
+  (tables: the director's effect sequence `dseq`; Johnny: a per-table report
+  sequence), so a re-delivery after a crash is harmless.
+- Because delivery is asynchronous, Johnny's decisions can cross a table's
+  reports in flight (e.g. a move is ordered just as the player busts). The
+  director handles every such race explicitly; the simulator reproduces them
+  with random per-link latency (`linkLatencyMs`) and every simulated
+  tournament must still finish with zero alerts.
+
+### Server seeds on the node
+
+Reducers need the tournament's server seed synchronously, but seeds are
+stored encrypted. Before an actor replays its log, the log reader decrypts the
+seed into process memory (`SeedService`); a node that cannot decrypt a seed
+faults the actor rather than dealing from a wrong deck.
+
 ## 4. Command processing pipeline (one table)
 
 ```
@@ -99,6 +130,7 @@ PlayerActionSubmitted  (WS frame / REST)
       INSERT table_commands (table_id, seq, ...)   -- idempotency: UNIQUE(table_id, action_id)
       INSERT table_events ...
       UPDATE projections (hands, actions, seats, tournament_players ...)
+      INSERT actor_outbox (reports for Johnny)
       every N commands: INSERT table_snapshots
     COMMIT                                          GameStateChanged (durable)
   → publish events (table:{id}:events)              EventPublished
@@ -177,4 +209,5 @@ state.
 | 50,000 – 1,000,000 | 6,250 – 125,000 | gateway and worker pools sized by load tests; PostgreSQL partitioned by tournament/table, read replicas for admin queries; orchestrator shards by table range (director per region + top-level balancer) |
 
 Capacity numbers are only claimed where `tests/load` measured them; see
-`docs/LOAD_TESTING.md`.
+[TESTING.md](./TESTING.md) for the measured results and how to reproduce them
+on your own hardware.

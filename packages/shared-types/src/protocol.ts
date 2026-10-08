@@ -63,6 +63,14 @@ export type ServerMessage =
     }
   | { t: 'table_event'; st: EpochMs; event: TableEvent }
   | { t: 'tournament_event'; st: EpochMs; event: TournamentEventEnvelope; summary: TournamentPublicSummary | null }
+  /**
+   * Coalesced tournament state (at most about one per second). In large fields
+   * per-player events (registrations, eliminations, moves, table openings and
+   * breaks) are not pushed to every player and spectator; this frame carries
+   * the resulting counters instead. Tournament events are a best-effort feed,
+   * not a gap-free stream: clients never resync because of a tournament seq gap.
+   */
+  | { t: 'tournament_summary'; st: EpochMs; summary: TournamentPublicSummary }
   /** The player's table assignment changed (move, final table, elimination): re-render from this. */
   | { t: 'self_update'; st: EpochMs; self: PlayerSelfSummary }
   | { t: 'action_result'; st: EpochMs; actionId: ActionId; ok: boolean; code: ActionRejectCode | null; message: string | null }

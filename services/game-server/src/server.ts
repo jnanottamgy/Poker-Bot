@@ -31,6 +31,7 @@ import { registerAdminTableRoutes } from './http/routes/admin-tables';
 import { registerAdminPlayerRoutes } from './http/routes/admin-players';
 import { registerAdminHandRoutes } from './http/routes/admin-hands';
 import { registerAdminSystemRoutes } from './http/routes/admin-system';
+import { registerReentryRoutes } from './http/routes/reentry';
 import { staticApps } from './http/static';
 import type { RuntimeLogger } from './runtime/actor-host';
 
@@ -150,6 +151,7 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
       (a) => registerPublicRoutes(a, ctx, registration),
       (a) => registerPublicLiveRoutes(a, deps),
       (a) => registerPlayerRoutes(a, deps),
+      (a) => registerReentryRoutes(a, { ...deps, registration }),
       (a) => registerAdminTournamentRoutes(a, { ...deps, live, bus }),
       (a) => registerAdminTableRoutes(a, { ...deps, bus }),
       (a) => registerAdminPlayerRoutes(a, { ...deps, bus, registration }),

@@ -64,6 +64,8 @@ export interface LoadResult {
   actionsPerSecond: number;
   framesIn: number;
   framesPerSecond: number;
+  /** Frames received per frame type (t), summed over all players. */
+  framesByType: Record<string, number>;
   bytesIn: number;
   hands: number;
   disconnects: number;
@@ -172,6 +174,7 @@ export async function runLoad(opts: LoadOptions): Promise<LoadResult> {
   let rejected = 0;
   let framesIn = 0;
   let bytesIn = 0;
+  const framesByType: Record<string, number> = {};
   let disconnects = 0;
   let stopping = false;
   const sockets: WebSocket[] = [];
@@ -199,6 +202,7 @@ export async function runLoad(opts: LoadOptions): Promise<LoadResult> {
         framesIn++;
         bytesIn += data.length;
         const m = JSON.parse(String(data)) as ServerMessage;
+        framesByType[m.t] = (framesByType[m.t] ?? 0) + 1;
         if (m.t === 'snapshot') {
           if (first) connectMs.push(performance.now() - t0);
           first = false;
@@ -280,6 +284,7 @@ export async function runLoad(opts: LoadOptions): Promise<LoadResult> {
     actionsPerSecond: Math.round((actions / Math.max(1, durationMs / 1000)) * 10) / 10,
     framesIn,
     framesPerSecond: Math.round((framesIn / Math.max(1, durationMs / 1000)) * 10) / 10,
+    framesByType,
     bytesIn,
     hands: summary?.counters.handsCompleted ?? 0,
     disconnects,

@@ -58,6 +58,16 @@ const isDelayedAudience = (a: ClientAudience | null): a is Delayed => a === 'SPE
 const FEATURED_TRIGGERS = new Set(['FINAL_TABLE_FORMED', 'TABLE_BROKEN', 'TABLE_CREATED']);
 /** Tournament events only admins receive (internal integrity details). */
 const ADMIN_ONLY_TOURNAMENT_EVENTS = new Set(['INTEGRITY_ALERT']);
+/**
+ * Per-player tournament events. Pushing each of them to every player would be
+ * quadratic in the field size (every elimination to every phone), so above
+ * FULL_FEED_MAX_PLAYERS registered players, players and spectators receive a
+ * coalesced `tournament_summary` instead (admins and displays keep the full feed;
+ * each player still gets their own elimination / move through the player channel).
+ */
+const HIGH_VOLUME_TOURNAMENT_EVENTS = new Set(['PLAYER_REGISTERED', 'PLAYER_ELIMINATED', 'TABLE_MOVE', 'TABLE_CREATED', 'TABLE_BROKEN', 'COUNTERS']);
+export const FULL_FEED_MAX_PLAYERS = 300;
+const SUMMARY_COALESCE_MS = 1000;
 
 const NOOP_LOG: GatewayLogger = { warn: () => undefined, error: () => undefined };
 
@@ -219,6 +229,8 @@ export class Gateway {
 
   private async drain(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
+    for (const p of this.pendingSummaries.values()) clearTimeout(p.timer);
+    this.pendingSummaries.clear();
     const open = this.connections();
     for (const c of open) c.close(CLOSE_CODES.SERVICE_RESTART, 'service restart');
     const deadline = Date.now() + 2_000;
@@ -843,12 +855,15 @@ export class Gateway {
     const conns = this.byTournament.get(msg.tournamentId);
     if (!conns || conns.size === 0) return;
     const adminOnly = ADMIN_ONLY_TOURNAMENT_EVENTS.has(msg.envelope.event.kind);
+    const coalesce = HIGH_VOLUME_TOURNAMENT_EVENTS.has(msg.envelope.event.kind) && msg.summary.counters.registered > FULL_FEED_MAX_PLAYERS;
     const shared = tournamentFrame(msg, this.now());
     let delayed = false;
     for (const c of conns) {
-      if (c.audience === 'ADMIN' || (c.audience === 'PLAYER' && !adminOnly)) c.sendTournament(msg.envelope.seq, shared);
+      if (c.audience === 'ADMIN') c.sendTournament(msg.envelope.seq, shared);
+      else if (c.audience === 'PLAYER' && !adminOnly && !coalesce) c.sendTournament(msg.envelope.seq, shared);
       else if (isDelayedAudience(c.audience) && !adminOnly) delayed = true;
     }
+    if (coalesce) this.scheduleSummary(msg.tournamentId, msg.summary);
     if (delayed) {
       this.delay.push(msg.tournamentId, this.cachedDelay(msg.tournamentId), () => this.releaseTournamentEvent(msg));
     }
@@ -862,8 +877,32 @@ export class Gateway {
     if (!this.delayedSockets.get(tid)) return;
     const prev = this.releasedSummaries.get(tid);
     if (!prev || prev.lastSeq <= msg.summary.lastSeq) this.releasedSummaries.set(tid, msg.summary);
+    const coalesce = HIGH_VOLUME_TOURNAMENT_EVENTS.has(msg.envelope.event.kind) && msg.summary.counters.registered > FULL_FEED_MAX_PLAYERS;
     const f = tournamentFrame(msg, this.now());
-    for (const c of this.byTournament.get(tid) ?? []) if (isDelayedAudience(c.audience)) c.sendTournament(msg.envelope.seq, f);
+    for (const c of this.byTournament.get(tid) ?? []) {
+      // The broadcast display keeps the full feed (its ticker); spectators get the coalesced summary.
+      if (c.audience === 'DISPLAY' || (c.audience === 'SPECTATOR' && !coalesce)) c.sendTournament(msg.envelope.seq, f);
+    }
+  }
+
+  private readonly pendingSummaries = new Map<string, { summary: TournamentEventMessage['summary']; timer: NodeJS.Timeout }>();
+
+  /** At most one coalesced summary per tournament per SUMMARY_COALESCE_MS for players and spectators. */
+  private scheduleSummary(tournamentId: string, summary: TournamentEventMessage['summary']): void {
+    const pending = this.pendingSummaries.get(tournamentId);
+    if (pending) {
+      if (pending.summary.lastSeq <= summary.lastSeq) pending.summary = summary;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const p = this.pendingSummaries.get(tournamentId);
+      this.pendingSummaries.delete(tournamentId);
+      if (!p) return;
+      const f = frame({ t: 'tournament_summary', st: this.now(), summary: p.summary });
+      for (const c of this.byTournament.get(tournamentId) ?? []) if (c.audience === 'PLAYER' || c.audience === 'SPECTATOR') c.sendOrdered(f);
+    }, SUMMARY_COALESCE_MS);
+    timer.unref?.();
+    this.pendingSummaries.set(tournamentId, { summary, timer });
   }
 
   private onPlayerMessage(playerId: string, msg: PlayerChannelMessage): void {

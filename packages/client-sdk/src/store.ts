@@ -124,13 +124,20 @@ export class GameStore {
       case 'tournament_event': {
         const s = this.state;
         if (msg.event.seq <= s.lastTournamentSeq) return false;
-        const gap = s.lastTournamentSeq > 0 && msg.event.seq > s.lastTournamentSeq + 1;
+        // Best-effort feed (large fields skip per-player events): a gap never needs a resync,
+        // the summary in the frame is authoritative.
         this.update({
           tournament: msg.summary ?? s.tournament,
           tournamentEvents: [...s.tournamentEvents, msg.event].slice(-MAX_TOURNAMENT_EVENTS),
           lastTournamentSeq: msg.event.seq,
         });
-        return gap;
+        return false;
+      }
+      case 'tournament_summary': {
+        const s = this.state;
+        if (s.tournament && s.tournament.lastSeq > msg.summary.lastSeq) return false;
+        this.update({ tournament: msg.summary, lastTournamentSeq: Math.max(s.lastTournamentSeq, msg.summary.lastSeq) });
+        return false;
       }
       case 'self_update': {
         const tableChanged = this.state.self?.tableId !== msg.self.tableId;
