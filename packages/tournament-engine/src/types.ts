@@ -243,6 +243,10 @@ export type DirectorInput =
   | { type: 'SET_FEATURED_TABLE'; tableId: TableId | null; admin: AdminMeta }
   | { type: 'UPDATE_SCHEDULE'; blindSchedule: BlindLevel[]; breaks: BreakRule[]; admin: AdminMeta }
   | { type: 'UPDATE_TIMING'; timing: TimingConfig; admin: AdminMeta }
+  /** Replaces the whole (already validated) configuration before START (DRAFT / REGISTRATION / REGISTRATION_CLOSED). */
+  | { type: 'SET_CONFIG'; config: TournamentConfig; admin: AdminMeta }
+  /** Replaces the running-mutable sections of the configuration that Johnny does not otherwise use (spectators, features). */
+  | { type: 'SET_POLICIES'; spectators: TournamentConfig['spectators']; features: TournamentConfig['features']; admin: AdminMeta }
   | { type: 'CANCEL'; admin: AdminMeta };
 
 export type DirectorInputType = DirectorInput['type'];

@@ -38,6 +38,10 @@ export class Counter implements Metric {
   get(labels?: Labels): number {
     return this.values.get(labelKey(labels)) ?? 0;
   }
+  /** Every label set with its value (label key in Prometheus form, '' for none). */
+  entries(): Array<[string, number]> {
+    return [...this.values];
+  }
   render(): string[] {
     return [...this.values].map(([k, v]) => `${this.name}${k ? `{${k}}` : ''} ${v}`);
   }

@@ -301,6 +301,49 @@ export class PlayerRepo {
     await this.q.query(`UPDATE tournament_players SET ${sets.join(', ')}, updated_at = now() WHERE entry_id = $1`, values);
   }
 
+  /** Batched projection of many entries' live state (one statement per chunk). */
+  async updateEntryStates(
+    rows: Array<{
+      entryId: string;
+      status: TournamentPlayerStatus;
+      tableId: string | null;
+      seat: number | null;
+      stack: number;
+      handsPlayed: number;
+      finishPosition: number | null;
+      tiedCount: number;
+      prizeMinor: number;
+      eliminatedAt: Date | null;
+      eliminationHandId: string | null;
+    }>,
+  ): Promise<void> {
+    const CHUNK = 2000;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const c = rows.slice(i, i + CHUNK);
+      await this.q.query(
+        `UPDATE tournament_players t
+            SET status = v.status, table_id = v.table_id, seat = v.seat, stack = v.stack, hands_played = v.hands,
+                finish_position = v.fp, tied_count = v.tc, prize_minor = v.pm, eliminated_at = v.ea, elimination_hand_id = v.eh, updated_at = now()
+           FROM unnest($1::text[], $2::text[], $3::text[], $4::int[], $5::bigint[], $6::int[], $7::int[], $8::int[], $9::bigint[], $10::timestamptz[], $11::text[])
+                AS v(entry_id, status, table_id, seat, stack, hands, fp, tc, pm, ea, eh)
+          WHERE t.entry_id = v.entry_id`,
+        [
+          c.map((r) => r.entryId),
+          c.map((r) => r.status),
+          c.map((r) => r.tableId),
+          c.map((r) => r.seat),
+          c.map((r) => r.stack),
+          c.map((r) => r.handsPlayed),
+          c.map((r) => r.finishPosition),
+          c.map((r) => r.tiedCount),
+          c.map((r) => r.prizeMinor),
+          c.map((r) => r.eliminatedAt),
+          c.map((r) => r.eliminationHandId),
+        ],
+      );
+    }
+  }
+
   async setPayment(
     entryId: string,
     input: { status: PaymentStatus; processedBy: string; reference: string | null },

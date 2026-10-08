@@ -119,6 +119,10 @@ function dispatch(d: Draft, i: DirectorInput): void {
       return admin.updateSchedule(d, i.blindSchedule, i.breaks);
     case 'UPDATE_TIMING':
       return admin.updateTiming(d, i.timing);
+    case 'SET_CONFIG':
+      return admin.setConfig(d, i.config);
+    case 'SET_POLICIES':
+      return admin.setPolicies(d, i.spectators, i.features);
     case 'CANCEL':
       return admin.cancel(d);
     default: {

@@ -7,6 +7,7 @@ import { actorAddress, poolOf } from '../runtime/actor';
 import { placeActor, roleServesPool } from '../runtime/placement';
 import { isActorError } from '../runtime/errors';
 import { OUTBOX_KICK_CHANNEL } from './messages';
+import type { MetricsCatalog } from '../observability/catalog';
 import type { ToDirector, ToTable } from './messages';
 
 /**
@@ -40,6 +41,7 @@ export interface OutboxDispatcherOptions {
   pageSize?: number;
   /** Per-delivery deadline (default 15 s). */
   deliveryTimeoutMs?: number;
+  metrics?: MetricsCatalog;
 }
 
 interface SourceState {
@@ -180,6 +182,10 @@ export class OutboxDispatcher {
     } else if (row.targetKind === 'director') {
       const p = row.payload as ToDirector;
       await this.opts.node.submit('director', row.targetId, { kind: 'REPORT', tableId: p.tableId, rseq: p.rseq, input: p.input }, { timeoutMs });
+      if (p.input.type === 'TABLE_HAND_RESULT' && this.opts.metrics) {
+        this.opts.metrics.handsCompleted.inc();
+        this.opts.metrics.windows.handsPerMinute.record(Date.now());
+      }
     } else {
       throw new Error(`Unknown outbox target kind ${row.targetKind}`);
     }

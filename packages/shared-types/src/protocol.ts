@@ -123,7 +123,9 @@ export type PlayerNotice =
     }
   | { kind: 'CHAMPION'; playersInField: number; stack: Chips }
   | { kind: 'SUSPENDED'; reason: string | null }
-  | { kind: 'RESTORED' };
+  | { kind: 'RESTORED' }
+  /** Private message from the tournament staff (admin "notice" / table-scoped announcement). */
+  | { kind: 'MESSAGE'; text: string; from: 'ADMIN' | 'DIRECTOR' };
 
 /** REST: player action request body (spec §75). */
 export interface PlayerActionRequest {

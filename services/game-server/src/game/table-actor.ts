@@ -9,7 +9,7 @@ import type {
   TableCommandEnvelope,
   TableEvent,
 } from '@jpb/shared-types';
-import { adminView, createTableState, handFairnessRecord, lastHandHistory, playerView, reduceTable, spectatorView } from '@jpb/table-engine';
+import { adminView, checkTableInvariants, chipsAtTable, createTableState, handFairnessRecord, lastHandHistory, playerView, reduceTable, spectatorView } from '@jpb/table-engine';
 import type { HandHistoryRecord, TableState } from '@jpb/table-engine';
 import { createDeckProvider } from '@jpb/fairness-engine/node';
 import type { DirectorInput } from '@jpb/tournament-engine';
@@ -40,7 +40,25 @@ export type TableQuery =
   | { q: 'ADMIN'; includeHoleCards: boolean }
   | { q: 'PLAYER'; playerId: PlayerId }
   | { q: 'LAST_HAND' }
-  | { q: 'STATE' };
+  | { q: 'STATE' }
+  | { q: 'INTERNALS' };
+
+/** Health data for the admin control room and integrity checks. */
+export interface TableInternals {
+  status: string;
+  version: number;
+  lastEventSeq: number;
+  handNumber: number;
+  chipsAtTable: number;
+  invariantViolations: string[];
+  lastProgressAt: number | null;
+  seated: number;
+  disconnected: number;
+  frozen: boolean;
+  holds: string[];
+  /** Timers this state requires (deadline + token); the health monitor re-fires overdue ones. */
+  timers: TimerRequest[];
+}
 
 export type TableActorCommand =
   | { kind: 'DIRECTOR'; dseq: number; command: ToTable['command'] }
@@ -204,6 +222,23 @@ export function createTableActorDefinition(deps: TableActorDeps): ActorDefinitio
         return { ...OK, data: lastHandHistory(t) };
       case 'STATE':
         return { ...OK, data: { status: t.status, holds: t.holds, frozen: t.frozen !== null, seated: seatedCount(t), handNumber: t.handNumber, version: t.version, nextEventSeq: t.nextEventSeq, lastProgressAt: t.lastProgressAt } };
+      case 'INTERNALS': {
+        const data: TableInternals = {
+          status: t.status,
+          version: t.version,
+          lastEventSeq: t.nextEventSeq - 1,
+          handNumber: t.handNumber,
+          chipsAtTable: chipsAtTable(t),
+          invariantViolations: checkTableInvariants(t),
+          lastProgressAt: t.lastProgressAt,
+          seated: seatedCount(t),
+          disconnected: t.seats.filter((o) => o !== null && !o.connected).length,
+          frozen: t.frozen !== null,
+          holds: [...t.holds],
+          timers: pendingTimers(state),
+        };
+        return { ...OK, data };
+      }
     }
   }
 

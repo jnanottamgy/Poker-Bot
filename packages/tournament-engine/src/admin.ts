@@ -1,4 +1,4 @@
-import type { BlindLevel, BreakRule, PlayerId, SeatIndex, TableId, TimingConfig } from '@jpb/shared-types';
+import type { BlindLevel, BreakRule, PlayerId, SeatIndex, TableId, TimingConfig, TournamentConfig, TournamentStatus } from '@jpb/shared-types';
 import type { Draft } from './draft';
 import { emit, fail, getTable, holdAll, mustPlayer, mustTable, openTables, putPlayer, putTable, releaseAll, tableCommand, tableTiming, transition } from './draft';
 import { endBreak, pauseClock, resumeClock, startBreak, startLevel } from './clock';
@@ -250,6 +250,18 @@ export function updateSchedule(d: Draft, schedule: BlindLevel[], breaks: BreakRu
     const end = isLast ? null : Math.max(d.now, c.levelStartedAt + schedule[cur]!.durationSeconds * 1000);
     d.s.clock = { ...c, levelEndsAt: end };
   }
+}
+
+const PRE_START: readonly TournamentStatus[] = ['DRAFT', 'REGISTRATION', 'REGISTRATION_CLOSED'];
+
+export function setConfig(d: Draft, config: TournamentConfig): void {
+  if (!PRE_START.includes(d.s.status)) fail('CONFIG_LOCKED', 'The configuration is locked once the tournament starts.');
+  if (config.maxPlayers < d.s.counters.registered) fail('INVALID', `${d.s.counters.registered} players are already registered; the maximum cannot be lower.`);
+  d.s.config = config;
+}
+
+export function setPolicies(d: Draft, spectators: TournamentConfig['spectators'], features: TournamentConfig['features']): void {
+  d.s.config = { ...d.s.config, spectators, features };
 }
 
 export function updateTiming(d: Draft, timing: TimingConfig): void {

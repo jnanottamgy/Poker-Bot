@@ -19,6 +19,7 @@ import { isActorError } from '../runtime/errors';
 import type { RegistrationDirectorPort } from '../services/registration';
 import { newId, newJoinCode } from '../security/ids';
 import type { SeedService } from './seeds';
+import type { MetricsCatalog } from '../observability/catalog';
 import type { AuditMeta, DirectorActorCommand, DirectorActorReply, DirectorQuery } from './director-actor';
 import type { TableActorCommand, TableActorReply, TableQuery } from './table-actor';
 
@@ -34,6 +35,7 @@ export interface GameServiceDeps {
   timeoutMs?: number;
   /** How long tournament configs are cached for policy checks (default 3 s). */
   configTtlMs?: number;
+  metrics?: MetricsCatalog;
 }
 
 export class GameError extends Error {
@@ -68,6 +70,10 @@ export class GameService implements GatewayBackend, RegistrationDirectorPort {
 
   get node(): NodeRuntime {
     return this.deps.node;
+  }
+
+  get seeds(): SeedService {
+    return this.deps.seeds;
   }
 
   // ------------------------------------------------------------------ tournaments
@@ -215,11 +221,23 @@ export class GameService implements GatewayBackend, RegistrationDirectorPort {
         tableStateVersion: input.tableStateVersion,
       },
     };
+    const m = this.deps.metrics;
     try {
       const reply = await this.deps.node.submit<TableActorReply>('table', input.tableId, command, { timeoutMs: this.timeout() });
+      if (m) {
+        const now = this.now();
+        m.actions.inc({ result: reply.duplicate ? 'duplicate' : reply.ok ? 'accepted' : 'rejected' });
+        if (reply.ok && !reply.duplicate) {
+          const latency = Math.max(0, now - input.receivedAt);
+          m.actionLatency.observe(latency);
+          m.windows.actionLatency.record(latency);
+          m.windows.actionsPerSecond.record(now);
+        }
+      }
       return { ok: reply.ok, code: reply.code, message: reply.message, duplicate: reply.duplicate };
     } catch (err) {
       if (isActorError(err, 'CONFLICT')) return { ok: true, code: null, message: null, duplicate: true };
+      m?.errors.inc({ area: 'action' });
       throw err;
     }
   }

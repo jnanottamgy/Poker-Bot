@@ -54,6 +54,7 @@ export type DirectorQuery =
   | { q: 'LEADERBOARD'; mode: 'stack' | 'finish'; offset: number; limit: number }
   | { q: 'TABLES' }
   | { q: 'FEATURED' }
+  | { q: 'HEALTH' }
   | { q: 'OVERVIEW' };
 
 export type DirectorActorCommand =
@@ -276,6 +277,8 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
       }
       case 'TABLES':
         return { ...OK, data: openTableList(d) };
+      case 'HEALTH':
+        return { ...OK, data: { status: d.status, nextTickAt: nextTickAt(d), frozen: d.frozen, integrityOk: d.integrity.ok } };
       case 'FEATURED': {
         if (d.featuredTableId) return { ...OK, data: d.featuredTableId };
         const open = openTableList(d);
@@ -304,14 +307,16 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
   };
 }
 
-/** Entry projection for players whose director record changed. */
+/** Entry projection for players whose director record changed (batched). */
 async function projectPlayers(repos: Repos, d: DirectorState, playerIds: string[]): Promise<void> {
+  const rows = [];
   for (const id of playerIds) {
     const p = getDirectorPlayer(d, id);
     if (!p) continue;
     const table = p.tableId ? bmGet(d.tables, p.tableId) : undefined;
     const stack = table?.summary.seats.find((s) => s.playerId === id)?.stack ?? p.stack;
-    await repos.players.updateEntryState(p.entryId, {
+    rows.push({
+      entryId: p.entryId,
       status: p.status,
       tableId: p.tableId,
       seat: p.seat,
@@ -322,9 +327,9 @@ async function projectPlayers(repos: Repos, d: DirectorState, playerIds: string[
       prizeMinor: p.prizeMinor,
       eliminatedAt: p.elimination ? new Date(p.elimination.eliminatedAt) : null,
       eliminationHandId: p.elimination?.handId || null,
-      ...(p.status === 'REGISTERED' ? {} : {}),
     });
   }
+  if (rows.length) await repos.players.updateEntryStates(rows);
 }
 
 /** Status, eliminations, movements and completion projections from tournament events. */

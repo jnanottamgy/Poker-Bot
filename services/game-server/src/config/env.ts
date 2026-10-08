@@ -16,7 +16,7 @@ export type NodeRole = (typeof NODE_ROLES)[number];
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(8080),
+  PORT: z.coerce.number().int().min(0).max(65535).default(8080),
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:8080'),
   /** PostgreSQL connection string. Absent => in-memory store (development/test only). */
   DATABASE_URL: z.string().min(1).optional(),

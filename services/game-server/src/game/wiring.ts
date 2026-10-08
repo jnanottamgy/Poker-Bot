@@ -104,9 +104,9 @@ export function createGameRuntime(deps: GameRuntimeDeps): GameRuntime {
       ...(deps.logger ? { logger: deps.logger } : {}),
     });
   }
-  const game = new GameService({ store, node, seeds });
+  const game = new GameService({ store, node, seeds, ...(deps.metrics ? { metrics: deps.metrics } : {}) });
   ref.game = game;
-  const dispatcher = new OutboxDispatcher({ store, node, bus, ...(deps.logger ? { logger: deps.logger } : {}), ...deps.dispatcher });
+  const dispatcher = new OutboxDispatcher({ store, node, bus, ...(deps.logger ? { logger: deps.logger } : {}), ...(deps.metrics ? { metrics: deps.metrics } : {}), ...deps.dispatcher });
 
   return {
     node,
