@@ -1,0 +1,28 @@
+{
+  "name": "@jpb/simulation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "In-process, virtual-clock tournament simulator with deterministic (non-AI) bot strategies. Used by tests, load benchmarks and the admin demo mode.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. --project packages packages/simulation/test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "bench": "tsx src/bench.ts"
+  },
+  "dependencies": {
+    "@jpb/shared-types": "*",
+    "@jpb/randomness": "*",
+    "@jpb/fairness-engine": "*",
+    "@jpb/poker-engine": "*",
+    "@jpb/table-engine": "*",
+    "@jpb/seating-engine": "*",
+    "@jpb/balancing-engine": "*",
+    "@jpb/tournament-engine": "*",
+    "@jpb/validation": "*"
+  }
+}

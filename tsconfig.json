@@ -1,7 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "packages/shared-types/src",
@@ -23,9 +25,14 @@
     "packages/validation/test",
     "packages/client-sdk/src",
     "packages/client-sdk/test",
+    "packages/simulation/src",
+    "packages/simulation/test",
     "services/game-server/src",
     "services/game-server/test",
     "tests"
   ],
-  "exclude": ["**/node_modules", "**/dist"]
+  "exclude": [
+    "**/node_modules",
+    "**/dist"
+  ]
 }
