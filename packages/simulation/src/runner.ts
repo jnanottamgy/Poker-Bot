@@ -18,6 +18,10 @@ export interface SimulationOptions {
   recordEvents?: boolean;
   /** Percentage of the field that is paid (default 15%, at least 1 place). */
   paidPercent?: number;
+  /** Asynchronous director↔table delivery latency range (ms); see HostOptions.linkLatencyMs. */
+  linkLatencyMs?: [number, number];
+  /** Fail on WARNING integrity alerts too (default false). */
+  failOnWarnings?: boolean;
 }
 
 export interface SimulationResult {
@@ -86,6 +90,7 @@ export function runSimulatedTournament(opts: SimulationOptions): SimulationResul
     serverSeed: simulationServerSeed(seed),
     startAt: T0,
     checkInvariants: opts.checkInvariants ?? true,
+    ...(opts.linkLatencyMs ? { linkLatencyMs: opts.linkLatencyMs } : {}),
   });
   host.recordEvents = opts.recordEvents ?? true;
   const mix = opts.strategyMix ?? DEFAULT_MIX;

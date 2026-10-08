@@ -53,6 +53,7 @@ export type DirectorQuery =
   | { q: 'PLAYER'; playerId: string }
   | { q: 'LEADERBOARD'; mode: 'stack' | 'finish'; offset: number; limit: number }
   | { q: 'TABLES' }
+  | { q: 'FEATURED' }
   | { q: 'OVERVIEW' };
 
 export type DirectorActorCommand =
@@ -275,6 +276,12 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
       }
       case 'TABLES':
         return { ...OK, data: openTableList(d) };
+      case 'FEATURED': {
+        if (d.featuredTableId) return { ...OK, data: d.featuredTableId };
+        const open = openTableList(d);
+        const final = open.find((t) => t.isFinalTable);
+        return { ...OK, data: (final ?? open[0])?.summary.tableId ?? null };
+      }
       case 'OVERVIEW':
         return { ...OK, data: { director: { ...d, players: { size: d.players.size, buckets: {} } }, stats: directorStats(d, now), summary: tournamentSummary(d, state.eventSeq), eventSeq: state.eventSeq } };
     }

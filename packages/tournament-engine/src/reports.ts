@@ -140,6 +140,9 @@ export function onCommandFailed(d: Draft, i: { tableId: TableId; command: TableC
     return;
   }
   if (c.type === 'CLOSE' && (i.code === 'HAND_IN_PROGRESS' || i.code === 'TABLE_CLOSED')) return; // retried on the next status change / already closed
+  // Delivery is asynchronous: the player busted (or the move was cancelled) after the
+  // REMOVE_PLAYER was sent and before the table processed it. The move is already settled.
+  if (c.type === 'REMOVE_PLAYER' && c.moveId && !d.s.pendingMoves[c.moveId]) return;
   if (c.type === 'REMOVE_PLAYER' && c.moveId && d.s.pendingMoves[c.moveId]) {
     // The player already left this table (e.g. busted in the hand that just ended): the move is void.
     const move = d.s.pendingMoves[c.moveId]!;

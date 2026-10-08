@@ -31,7 +31,8 @@ type Message =
 type Timer =
   | { kind: 'TABLE_TIMER'; tableId: TableId; timer: TableTimerRequest }
   | { kind: 'DIRECTOR_TICK' }
-  | { kind: 'BOT'; tableId: TableId; playerId: PlayerId; turnVersion: number; intent: PlayerActionIntent };
+  | { kind: 'BOT'; tableId: TableId; playerId: PlayerId; turnVersion: number; intent: PlayerActionIntent }
+  | { kind: 'DELIVER'; message: Message };
 
 export interface HostOptions {
   tournamentId: string;
@@ -44,6 +45,14 @@ export interface HostOptions {
   strict?: boolean;
   /** Virtual think time range for bots, ms. */
   thinkMs?: [number, number];
+  /**
+   * Asynchronous delivery between the director and the tables, like the
+   * production outbox: each message is delayed by a random latency in this
+   * range (ms), FIFO per link (director→table T, table T→director) but with
+   * no ordering across links. Exercises the races between moves, busts and
+   * status reports. Default: synchronous delivery.
+   */
+  linkLatencyMs?: [number, number];
 }
 
 export interface HostStats {
@@ -85,6 +94,8 @@ export class SimulationHost {
   private readonly thinkRng: RandomSource;
   private commandSeq = 0;
   private draining = false;
+  private readonly latencyRng: RandomSource;
+  private readonly linkLast = new Map<string, number>();
 
   constructor(private readonly opts: HostOptions) {
     this.scheduler = new VirtualScheduler(opts.startAt);
@@ -92,6 +103,7 @@ export class SimulationHost {
     this.director = createDirectorState({ tournamentId: opts.tournamentId, config: opts.config, createdAt: opts.startAt, serverSeedHash: commitmentFor(opts.serverSeed) });
     this.index = buildTableIndex(this.director);
     this.thinkRng = this.draw('think');
+    this.latencyRng = this.draw('latency');
   }
 
   get now(): number {
@@ -132,8 +144,22 @@ export class SimulationHost {
     }
   }
 
+  /** Queues a director↔table message, synchronously or after a per-link FIFO latency. */
+  private send(link: string, message: Message): void {
+    const range = this.opts.linkLatencyMs;
+    if (!range) {
+      this.queue.push(message);
+      return;
+    }
+    const [lo, hi] = range;
+    const at = Math.max(this.now + lo + uniformInt(this.latencyRng, Math.max(1, hi - lo + 1)), this.linkLast.get(link) ?? 0);
+    this.linkLast.set(link, at);
+    this.scheduler.schedule(at, { kind: 'DELIVER', message });
+  }
+
   private fire(t: Timer): void {
-    if (t.kind === 'DIRECTOR_TICK') this.queue.push({ kind: 'director', input: { type: 'TICK' } });
+    if (t.kind === 'DELIVER') this.queue.push(t.message);
+    else if (t.kind === 'DIRECTOR_TICK') this.queue.push({ kind: 'director', input: { type: 'TICK' } });
     else if (t.kind === 'TABLE_TIMER') {
       if (t.timer.kind === 'ACTION_TIMEOUT') this.stats.timeouts += 0; // counted from events
       this.queue.push({ kind: 'table', tableId: t.tableId, command: { type: 'TIMER_FIRED', kind: t.timer.kind, token: t.timer.token }, fromDirector: false });
@@ -210,7 +236,7 @@ export class SimulationHost {
         return;
       }
       case 'TABLE_COMMAND':
-        this.queue.push({ kind: 'table', tableId: e.tableId, command: e.command, fromDirector: true });
+        this.send(`d>${e.tableId}`, { kind: 'table', tableId: e.tableId, command: e.command, fromDirector: true });
         return;
       case 'SCHEDULE_TICK':
         if (e.at !== null) this.scheduler.schedule(e.at, { kind: 'DIRECTOR_TICK' });
@@ -244,7 +270,7 @@ export class SimulationHost {
       if (v.length) throw new Error(`table ${tableId} invariants broken after ${command.type}: ${v.join('; ')}`);
     }
     if (fromDirector && tr.reply && !tr.reply.ok && !tr.reply.duplicate) {
-      this.queue.push({ kind: 'director', input: { type: 'TABLE_COMMAND_FAILED', tableId, command, code: tr.reply.code ?? 'UNKNOWN' } });
+      this.send(`t>${tableId}`, { kind: 'director', input: { type: 'TABLE_COMMAND_FAILED', tableId, command, code: tr.reply.code ?? 'UNKNOWN' } });
     }
     if (command.type === 'PLAYER_ACTION' && tr.reply && !tr.reply.ok) this.stats.rejectedActions += 1;
     for (const t of tr.timers) this.scheduler.schedule(t.at, { kind: 'TABLE_TIMER', tableId, timer: t });
@@ -258,22 +284,22 @@ export class SimulationHost {
     switch (e.kind) {
       case 'HAND_RESULT':
         this.stats.handsCompleted += 1;
-        this.queue.push({ kind: 'director', input: { type: 'TABLE_HAND_RESULT', report: e.result } });
+        this.send(`t>${tableId}`, { kind: 'director', input: { type: 'TABLE_HAND_RESULT', report: e.result } });
         return;
       case 'PLAYER_REMOVED':
-        this.queue.push({
+        this.send(`t>${tableId}`, {
           kind: 'director',
           input: { type: 'TABLE_PLAYER_REMOVED', tableId, playerId: e.playerId, seat: e.seat, stack: e.stack, reason: e.reason, moveId: e.moveId, ...(e.stats ? { stats: e.stats } : {}) },
         });
         return;
       case 'PLAYER_SEATED':
-        this.queue.push({ kind: 'director', input: { type: 'TABLE_PLAYER_SEATED', tableId, playerId: e.playerId, seat: e.seat, stack: e.stack, moveId: e.moveId } });
+        this.send(`t>${tableId}`, { kind: 'director', input: { type: 'TABLE_PLAYER_SEATED', tableId, playerId: e.playerId, seat: e.seat, stack: e.stack, moveId: e.moveId } });
         return;
       case 'TABLE_STATUS_CHANGED':
-        this.queue.push({ kind: 'director', input: { type: 'TABLE_STATUS_CHANGED', tableId, status: e.status, holds: e.holds, frozen: e.frozen } });
+        this.send(`t>${tableId}`, { kind: 'director', input: { type: 'TABLE_STATUS_CHANGED', tableId, status: e.status, holds: e.holds, frozen: e.frozen } });
         return;
       case 'STACK_ADJUSTED':
-        this.queue.push({ kind: 'director', input: { type: 'TABLE_STACK_ADJUSTED', tableId, playerId: e.playerId, before: e.before, after: e.after } });
+        this.send(`t>${tableId}`, { kind: 'director', input: { type: 'TABLE_STACK_ADJUSTED', tableId, playerId: e.playerId, before: e.before, after: e.after } });
         return;
       case 'PLAYER_ACTED':
         if (e.timeout) this.stats.timeouts += 1;

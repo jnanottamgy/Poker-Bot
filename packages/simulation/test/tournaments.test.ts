@@ -89,3 +89,24 @@ describe('determinism and replay', () => {
     }
   });
 });
+
+describe('asynchronous delivery (production-like races between moves, busts and reports)', () => {
+  const cases: Array<[number, [number, number], string]> = [
+    [18, [5, 400], 'async-a'],
+    [60, [50, 3000], 'async-b'],
+    [120, [1, 1500], 'async-c'],
+    [200, [100, 5000], 'async-d'],
+  ];
+  for (const [players, latency, seed] of cases) {
+    it(`${players} players with ${latency[0]}–${latency[1]} ms link latency finish cleanly and replay from logs`, () => {
+      const r = runSimulatedTournament({ players, seed, linkLatencyMs: latency });
+      expect(r.finished).toBe(true);
+      expect(r.problems).toEqual([]);
+      expect(r.host.alerts).toEqual([]);
+      const replayed = replayRun(r.host, { tournamentId: simulationTournamentId(players, seed), serverSeed: simulationServerSeed(seed), startAt: SIM_T0 });
+      expect(replayed.director).toEqual(r.host.director);
+      const again = runSimulatedTournament({ players, seed, linkLatencyMs: latency, recordEvents: false });
+      expect(runDigest(again.host)).toBe(runDigest(r.host));
+    }, 120_000);
+  }
+});
