@@ -53,6 +53,16 @@ export interface SeatSummary {
   stats: SeatPositionStats;
   /** handsPlayedTotal at the time of each of the player's recent moves (most recent last). */
   recentMovesAtHand: number[];
+  /**
+   * In-flight departure (optional, default false). True once the director has
+   * ordered this player off the table (REMOVE_PLAYER with reason MOVED /
+   * TABLE_BROKEN / FINAL_TABLE) but the table has not yet reported
+   * PLAYER_REMOVED. The seat stays physically occupied (it is never assigned to
+   * anyone else), but the player no longer counts toward this table's size, is
+   * never selected to move again, and is assumed absent from the next hand
+   * dealt at this table. See @jpb/seating-engine README.
+   */
+  movingOut?: boolean;
 }
 
 /** Director's view of one table, refreshed from every HAND_RESULT report and every seat/remove. */

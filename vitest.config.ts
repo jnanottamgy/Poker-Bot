@@ -12,6 +12,13 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'ui',
+          include: ['packages/ui/test/**/*.test.{ts,tsx}', 'apps/*/test/**/*.test.{ts,tsx}', 'packages/client-sdk/test/**/*.test.tsx'],
+          environment: 'jsdom',
+        },
+      },
+      {
+        test: {
           name: 'property',
           include: ['tests/property/**/*.test.ts'],
           environment: 'node',

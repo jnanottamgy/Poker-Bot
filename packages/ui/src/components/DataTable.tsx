@@ -1,0 +1,193 @@
+import { useMemo, useState } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
+import { cx } from '../cx';
+import { formatCount } from '../format';
+import { EmptyState } from './EmptyState';
+import { Icon } from './Icon';
+import { IconButton } from './IconButton';
+import { Skeleton } from './Skeleton';
+
+export interface Column<T> {
+  key: string;
+  header: ReactNode;
+  /** Cell renderer. Defaults to String(row[key]). */
+  render?: (row: T) => ReactNode;
+  /** Value used for sorting; providing it makes the column sortable. */
+  sortValue?: (row: T) => number | string;
+  align?: 'left' | 'right' | 'center';
+  width?: string;
+  /** Use tabular numerals. */
+  numeric?: boolean;
+}
+
+export interface SortState {
+  key: string;
+  dir: 'asc' | 'desc';
+}
+
+export interface PaginationProps {
+  page: number; // 0-based
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}
+
+export interface DataTableProps<T> {
+  columns: Column<T>[];
+  rows: T[];
+  rowKey: (row: T) => string;
+  /** Accessible table name. */
+  label: string;
+  /** Row activation (click / Enter / Space). Rows become focusable buttons-in-a-row. */
+  onRowActivate?: (row: T) => void;
+  /** Controlled sort; omit for client-side uncontrolled sorting of `rows`. */
+  sort?: SortState | null;
+  onSortChange?: (s: SortState) => void;
+  /** Server-driven paging footer. */
+  pagination?: PaginationProps;
+  loading?: boolean;
+  empty?: ReactNode;
+  /** Highlight a selected row. */
+  selectedKey?: string | null;
+  /** Max height for the scroll area (sticky header). */
+  maxHeight?: string;
+  density?: 'comfortable' | 'compact';
+  className?: string;
+}
+
+/**
+ * Sortable data table with sticky header, keyboard-accessible rows
+ * (Tab to a row, Enter/Space to open, ArrowUp/ArrowDown to move),
+ * aria-sort on headers, pagination footer and empty/loading states.
+ */
+export function DataTable<T>({
+  columns,
+  rows,
+  rowKey,
+  label,
+  onRowActivate,
+  sort: sortProp,
+  onSortChange,
+  pagination,
+  loading = false,
+  empty,
+  selectedKey,
+  maxHeight,
+  density = 'comfortable',
+  className,
+}: DataTableProps<T>) {
+  const [localSort, setLocalSort] = useState<SortState | null>(null);
+  const controlled = sortProp !== undefined;
+  const sort = controlled ? sortProp : localSort;
+
+  const sorted = useMemo(() => {
+    if (controlled || !sort) return rows;
+    const col = columns.find((c) => c.key === sort.key);
+    if (!col?.sortValue) return rows;
+    const get = col.sortValue;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const va = get(a);
+      const vb = get(b);
+      return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+    });
+  }, [rows, columns, sort, controlled]);
+
+  const toggleSort = (key: string): void => {
+    const nextDir: SortState['dir'] = sort?.key === key && sort.dir === 'desc' ? 'asc' : 'desc';
+    const next = { key, dir: nextDir };
+    if (!controlled) setLocalSort(next);
+    onSortChange?.(next);
+  };
+
+  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, row: T): void => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onRowActivate?.(row);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const el = e.key === 'ArrowDown' ? e.currentTarget.nextElementSibling : e.currentTarget.previousElementSibling;
+      if (el instanceof HTMLElement) el.focus();
+    }
+  };
+
+  const pages = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize)) : 1;
+
+  return (
+    <div className={cx('jpb-dt', `jpb-dt--${density}`, className)}>
+      <div className="jpb-dt__scroll" style={{ maxHeight }} tabIndex={-1}>
+        <table className="jpb-dt__table" aria-label={label} aria-busy={loading || undefined}>
+          <thead>
+            <tr>
+              {columns.map((c) => {
+                const active = sort?.key === c.key;
+                const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : c.sortValue ? 'none' : undefined;
+                return (
+                  <th key={c.key} scope="col" aria-sort={ariaSort} style={{ width: c.width, textAlign: c.align }} className={cx(c.numeric && 'is-num')}>
+                    {c.sortValue ? (
+                      <button type="button" className={cx('jpb-dt__sort', active && 'is-active')} onClick={() => toggleSort(c.key)}>
+                        {c.header}
+                        <Icon name={active && sort.dir === 'asc' ? 'arrow-up' : 'arrow-down'} className="jpb-dt__sorticon" />
+                      </button>
+                    ) : (
+                      c.header
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {loading &&
+              Array.from({ length: 5 }, (_, i) => (
+                <tr key={`sk-${i}`} className="jpb-dt__skeleton">
+                  {columns.map((c) => (
+                    <td key={c.key}>
+                      <Skeleton width="70%" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            {!loading &&
+              sorted.map((row) => {
+                const key = rowKey(row);
+                return (
+                  <tr
+                    key={key}
+                    tabIndex={onRowActivate ? 0 : undefined}
+                    className={cx(onRowActivate && 'is-interactive', selectedKey === key && 'is-selected')}
+                    aria-selected={selectedKey !== undefined ? selectedKey === key : undefined}
+                    onClick={onRowActivate ? () => onRowActivate(row) : undefined}
+                    onKeyDown={onRowActivate ? (e) => onRowKey(e, row) : undefined}
+                  >
+                    {columns.map((c) => (
+                      <td key={c.key} style={{ textAlign: c.align }} className={cx(c.numeric && 'is-num jpb-num')}>
+                        {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? '')}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+        {!loading && rows.length === 0 && <div className="jpb-dt__empty">{empty ?? <EmptyState compact title="Nothing here yet" />}</div>}
+      </div>
+      {pagination && (
+        <div className="jpb-dt__foot">
+          <span className="jpb-dt__range">
+            {pagination.total === 0
+              ? 'No results'
+              : `${formatCount(pagination.page * pagination.pageSize + 1)}–${formatCount(Math.min(pagination.total, (pagination.page + 1) * pagination.pageSize))} of ${formatCount(pagination.total)}`}
+          </span>
+          <span className="jpb-dt__pager">
+            <IconButton icon="chevron-left" label="Previous page" size="sm" variant="secondary" disabled={pagination.page <= 0} onClick={() => pagination.onPageChange(pagination.page - 1)} />
+            <span className="jpb-dt__page" aria-live="polite">
+              Page {pagination.page + 1} of {formatCount(pages)}
+            </span>
+            <IconButton icon="chevron-right" label="Next page" size="sm" variant="secondary" disabled={pagination.page >= pages - 1} onClick={() => pagination.onPageChange(pagination.page + 1)} />
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}

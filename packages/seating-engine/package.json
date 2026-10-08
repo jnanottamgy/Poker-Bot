@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@jpb/randomness": "*",
     "@jpb/shared-types": "*"
   }
 }
