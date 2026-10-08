@@ -1,0 +1,26 @@
+{
+  "name": "@jpb/player-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-first player app (QR join, registration, live table, reconnect).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@jpb/shared-types": "*",
+    "@jpb/client-sdk": "*",
+    "@jpb/ui": "*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@jpb/tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-package property, integration, e2e, chaos and load tests.",
+  "type": "module",
+  "scripts": {
+    "load": "tsx load/run-load.ts"
+  },
+  "dependencies": {
+    "@jpb/shared-types": "*",
+    "@jpb/randomness": "*",
+    "@jpb/fairness-engine": "*",
+    "@jpb/poker-engine": "*",
+    "@jpb/table-engine": "*",
+    "@jpb/seating-engine": "*",
+    "@jpb/balancing-engine": "*",
+    "@jpb/tournament-engine": "*",
+    "@jpb/validation": "*",
+    "@jpb/client-sdk": "*",
+    "@jpb/game-server": "*",
+    "ws": "^8.22.0"
+  }
+}

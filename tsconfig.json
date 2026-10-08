@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [
+    "packages/shared-types/src",
+    "packages/randomness/src",
+    "packages/randomness/test",
+    "packages/fairness-engine/src",
+    "packages/fairness-engine/test",
+    "packages/poker-engine/src",
+    "packages/poker-engine/test",
+    "packages/table-engine/src",
+    "packages/table-engine/test",
+    "packages/seating-engine/src",
+    "packages/seating-engine/test",
+    "packages/balancing-engine/src",
+    "packages/balancing-engine/test",
+    "packages/tournament-engine/src",
+    "packages/tournament-engine/test",
+    "packages/validation/src",
+    "packages/validation/test",
+    "packages/client-sdk/src",
+    "packages/client-sdk/test",
+    "services/game-server/src",
+    "services/game-server/test",
+    "tests"
+  ],
+  "exclude": ["**/node_modules", "**/dist"]
+}

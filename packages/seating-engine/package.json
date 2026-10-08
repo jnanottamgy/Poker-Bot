@@ -1,0 +1,19 @@
+{
+  "name": "@jpb/seating-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic table-count, distribution, initial seat draw and blind-fair seat selection.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. --project packages packages/seating-engine/test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@jpb/shared-types": "*"
+  }
+}

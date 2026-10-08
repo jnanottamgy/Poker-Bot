@@ -1,0 +1,16 @@
+{
+  "name": "@jpb/randomness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cryptographically secure randomness: CSPRNG, HMAC-SHA256 DRBG, unbiased integers, Fisher-Yates.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. --project packages packages/randomness/test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

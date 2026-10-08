@@ -1,0 +1,46 @@
+{
+  "name": "@jpb/game-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Johnny's Poker Bot server: REST API, WebSocket gateway, table actors, tournament orchestrator, persistence. Runs as one node or as horizontally scaled roles.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "test": "vitest run --root ../.. --project packages services/game-server/test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/helmet": "^13.1.2",
+    "@fastify/rate-limit": "^11.2.1",
+    "@fastify/static": "^10.1.5",
+    "@fastify/websocket": "^11.3.3",
+    "@jpb/balancing-engine": "*",
+    "@jpb/fairness-engine": "*",
+    "@jpb/poker-engine": "*",
+    "@jpb/randomness": "*",
+    "@jpb/seating-engine": "*",
+    "@jpb/shared-types": "*",
+    "@jpb/table-engine": "*",
+    "@jpb/tournament-engine": "*",
+    "@jpb/validation": "*",
+    "fastify": "^5.12.5",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.18.2",
+    "pino-pretty": "^13.2.0"
+  }
+}

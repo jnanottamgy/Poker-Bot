@@ -1,0 +1,20 @@
+{
+  "name": "@jpb/fairness-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Commit/reveal seed scheme, deterministic per-hand deck derivation, independent verification.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. --project packages packages/fairness-engine/test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@jpb/randomness": "*",
+    "@jpb/shared-types": "*"
+  }
+}
