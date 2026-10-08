@@ -42,8 +42,29 @@ export type ServerMessage =
   | { t: 'another_device'; st: EpochMs }
   | { t: 'session_replaced'; st: EpochMs }
   | { t: 'snapshot'; st: EpochMs; snapshot: ClientSnapshot }
+  /**
+   * One processed table command: the events it produced (already filtered
+   * for this recipient — animation/log material) plus the resulting
+   * authoritative table view for this audience. Clients render the view,
+   * never a locally computed state (server state always wins, spec §76).
+   * `fromSeq` is the first event seq covered; a gap versus the previously
+   * received `toSeq` means frames were missed (harmless: the view is
+   * complete), and the client may request a snapshot for event history.
+   */
+  | {
+      t: 'table_update';
+      st: EpochMs;
+      tableId: TableId;
+      fromSeq: number;
+      toSeq: number;
+      version: number;
+      events: TableEvent[];
+      view: PlayerTableView | SpectatorTableView | AdminTableView;
+    }
   | { t: 'table_event'; st: EpochMs; event: TableEvent }
-  | { t: 'tournament_event'; st: EpochMs; event: TournamentEventEnvelope }
+  | { t: 'tournament_event'; st: EpochMs; event: TournamentEventEnvelope; summary: TournamentPublicSummary | null }
+  /** The player's table assignment changed (move, final table, elimination): re-render from this. */
+  | { t: 'self_update'; st: EpochMs; self: PlayerSelfSummary }
   | { t: 'action_result'; st: EpochMs; actionId: ActionId; ok: boolean; code: ActionRejectCode | null; message: string | null }
   | { t: 'pong'; st: EpochMs; ct: EpochMs }
   | { t: 'notice'; st: EpochMs; notice: PlayerNotice }
