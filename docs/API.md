@@ -72,11 +72,11 @@ DTO file does not name are typed in `apps/admin-dashboard/src/api/types.ts`):
 | --- | --- | --- | --- |
 | GET | `/api/admin/tournaments?status&simulations` | PLAYER_VIEW | 0 |
 | POST | `/api/admin/tournaments` `{ config }` | TOURNAMENT_CREATE | 0 |
-| GET | `/api/admin/tournaments/:id` (overview: record, director summary, counters, health, chip conservation) | PLAYER_VIEW | 0 |
+| GET | `/api/admin/tournaments/:id` (overview: record, director summary, counters, health, chip conservation; `tablesByStatus` counts tables by list status incl. `STALLED` and `CLOSED`, plus the overlapping `FROZEN` and `BREAKING`) | PLAYER_VIEW | 0 |
 | PUT | `/api/admin/tournaments/:id/config` (DRAFT/REGISTRATION only) | TOURNAMENT_EDIT_CONFIG | 1 |
 | PATCH | `/api/admin/tournaments/:id/config/running` (MUTABLE_WHILE_RUNNING fields) | TOURNAMENT_EDIT_CONFIG | 2 `EDIT` |
 | POST | `/api/admin/tournaments/:id/clone` | TOURNAMENT_CREATE | 0 |
-| DELETE | `/api/admin/tournaments/:id` (DRAFT only) | TOURNAMENT_CREATE | 1 |
+| DELETE | `/api/admin/tournaments/:id` (DRAFT only; the append-only audit log keeps referring to it, so the draft is discarded: cancelled, audited `TOURNAMENT_DELETED` and left out of the list) | TOURNAMENT_CREATE | 1 |
 | POST | `/api/admin/tournaments/:id/registration/open` · `/close` · `/reopen` | TOURNAMENT_LIFECYCLE | 1 |
 | POST | `/api/admin/tournaments/:id/start` `{ adminEntropy? }` → `{ ok, publicEntropy }` | TOURNAMENT_LIFECYCLE | 1 |
 | POST | `/api/admin/tournaments/:id/pause` (after current hands) · `/resume` | TOURNAMENT_PAUSE | 1 |
@@ -97,7 +97,7 @@ DTO file does not name are typed in `apps/admin-dashboard/src/api/types.ts`):
 
 | Method | Path | Permission | Level |
 | --- | --- | --- | --- |
-| GET | `/api/admin/tournaments/:id/tables?status&minPlayers&maxPlayers&stalled&q&sort=number\|players\|stall\|chips&offset&limit` (`q`: table number prefix) | PLAYER_VIEW | 0 |
+| GET | `/api/admin/tournaments/:id/tables?status&minPlayers&maxPlayers&stalled&q&sort=number\|players\|stall\|chips&offset&limit` (`q`: table number prefix; open tables only unless `status=CLOSED`) | PLAYER_VIEW | 0 |
 | GET | `/api/admin/tables/:tableId` (admin view + internals) | PLAYER_VIEW | 0 |
 | GET | `/api/admin/tables/:tableId/events?after&limit` | HAND_HISTORY_VIEW | 0 |
 | POST | `/api/admin/tables/:tableId/hold` · `/release` | TABLE_CONTROL | 1 |
@@ -136,7 +136,7 @@ DTO file does not name are typed in `apps/admin-dashboard/src/api/types.ts`):
 | GET | `/api/admin/tournaments/:id/hands?tableId&playerId&handNumber&minPot&showdown&allIn&offset&limit` | HAND_HISTORY_VIEW | 0 |
 | GET | `/api/admin/hands/:handId` (full history incl. hole cards) | HAND_HISTORY_VIEW | 0 |
 | GET | `/api/admin/hands/:handId/fairness` | FAIRNESS_VIEW | 0 |
-| GET | `/api/admin/tournaments/:id/fairness` · `/fairness/bundle?fromHand&toHand` | FAIRNESS_VIEW | 0 |
+| GET | `/api/admin/tournaments/:id/fairness` · `/fairness/bundle?fromHand&toHand` (`FairnessExport`; `entropyInputs` is null when the stored inputs do not re-derive the public entropy, e.g. after admin entropy at start) | FAIRNESS_VIEW | 0 |
 | POST | `/api/admin/tournaments/:id/fairness/reveal-seed` (COMPLETED/CANCELLED only) → `{ serverSeed }` | FAIRNESS_REVEAL_SEED | 2 `REVEAL` |
 | GET | `/api/admin/tournaments/:id/standings?mode=stack\|finish&offset&limit` · `.csv` | PLAYER_VIEW | 0 |
 | GET | `/api/admin/tournaments/:id/payouts` · `/payouts.csv` | PAYOUT_VIEW | 0 |

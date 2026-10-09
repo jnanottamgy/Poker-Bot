@@ -99,6 +99,8 @@ export interface ResolvedTournament {
   tournamentId: string;
   joinCode: string | null;
   info: TournamentInfo | null;
+  /** Where prize/name info can be refreshed from: public join info, the admin overview, or nowhere. */
+  infoSource: 'join' | 'admin' | null;
 }
 
 export function infoFromJoin(j: JoinInfoDto): TournamentInfo {
@@ -134,18 +136,18 @@ export async function resolveTournament(params: { tournamentId: string | null; j
     const tournamentId = join ? join.tournamentId : (await api<TournamentPublicSummary>(`/api/public/tournaments/${code}/summary`)).tournamentId;
     if (params.tournamentId && params.tournamentId !== tournamentId) throw new ApiError(400, 'MISMATCH', 'The join code belongs to another tournament.');
     const info = join ? infoFromJoin(join) : await adminInfo(tournamentId);
-    return { tournamentId, joinCode: params.joinCode, info };
+    return { tournamentId, joinCode: params.joinCode, info, infoSource: join ? 'join' : info ? 'admin' : null };
   }
   if (!params.tournamentId) throw new ApiError(400, 'NO_TOURNAMENT', 'Open this page with ?t=<tournament id> or ?code=<join code>.');
   const o = await adminOverview(params.tournamentId);
-  return { tournamentId: params.tournamentId, joinCode: o?.joinCode ?? null, info: o ? infoFromOverview(o) : null };
+  return { tournamentId: params.tournamentId, joinCode: o?.joinCode ?? null, info: o ? infoFromOverview(o) : null, infoSource: o ? 'admin' : null };
 }
 
 function adminOverview(tournamentId: string): Promise<TournamentOverviewDto | null> {
   return api<TournamentOverviewDto>(`/api/admin/tournaments/${encodeURIComponent(tournamentId)}`).catch(() => null);
 }
 
-async function adminInfo(tournamentId: string): Promise<TournamentInfo | null> {
+export async function adminInfo(tournamentId: string): Promise<TournamentInfo | null> {
   const o = await adminOverview(tournamentId);
   return o ? infoFromOverview(o) : null;
 }

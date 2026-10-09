@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { TOURNAMENT_TRANSITIONS } from '@jpb/shared-types';
 import type {
   ChipConservationDto,
+  Paginated,
   TableListItemDto,
   TournamentConfig,
   TournamentListItemDto,
@@ -62,6 +63,12 @@ interface OverviewData {
   eventSeq: number;
 }
 
+/** Table list status: the actor's status, or STALLED for an unfrozen, unheld table without progress for `stallMs`. */
+export function tableListStatus(t: DirectorTable, lastProgressAt: number | null, now: number, stallMs: number): TableListItemDto['status'] {
+  const stalled = (t.status === 'IN_HAND' || t.status === 'BETWEEN_HANDS') && !t.frozen && t.holds.length === 0 && lastProgressAt !== null && now - lastProgressAt > stallMs;
+  return stalled ? 'STALLED' : t.status;
+}
+
 /**
  * Estimated time remaining (documented formula, docs/ADMIN_CONTROL_ROOM.md):
  * players are eliminated at the average rate observed so far, so
@@ -83,8 +90,7 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
     const data = await game.directorQuery<OverviewData>(t.id, { q: 'OVERVIEW' }).catch(() => null);
     const d = data?.director ?? null;
     const tables = (await game.directorQuery<DirectorTable[]>(t.id, { q: 'TABLES' }).catch(() => null)) ?? [];
-    const tablesByStatus: Record<string, number> = {};
-    for (const tb of tables) tablesByStatus[tb.status] = (tablesByStatus[tb.status] ?? 0) + 1;
+    const tablesByStatus = await tableStatusCounts(t.id, tables, now);
     const counters = d?.counters ?? { ...t.counters, inTransit: 0, totalChips: 0, largestPot: 0 };
     const hands = await ctx.store.repos.hands.stats(t.id);
     const level = data?.summary.currentLevel ?? null;
@@ -141,6 +147,32 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
   async function deletedDrafts(): Promise<Set<string>> {
     const r = await ctx.store.repos.q.query<{ tournament_id: string }>(`SELECT DISTINCT tournament_id FROM audit_logs WHERE action = $1 AND tournament_id IS NOT NULL`, [TOURNAMENT_DELETED]);
     return new Set(r.rows.map((x) => x.tournament_id));
+  }
+
+  /** Last progress of each table from the projection (bounded: the first 1 000 tables by number). */
+  async function progressByTable(tournamentId: string): Promise<Map<string, { lastProgressAt: number | null; handsPlayed: number }>> {
+    const meta = await ctx.store.repos.tableLogs.listTables(tournamentId, { limit: 1000 });
+    return new Map(meta.rows.map((m) => [m.id, { lastProgressAt: m.lastProgressAt?.getTime() ?? null, handsPlayed: m.handsPlayed }]));
+  }
+
+  /**
+   * Overview table counts, keyed like the table list's `status` filter (STALLED and CLOSED included), plus
+   * FROZEN and BREAKING, which overlap the statuses (the control room's summary bar shows all of them).
+   */
+  async function tableStatusCounts(tournamentId: string, tables: DirectorTable[], now: number): Promise<Record<string, number>> {
+    const progress = await progressByTable(tournamentId);
+    const out: Record<string, number> = {};
+    const add = (key: string, n = 1) => {
+      if (n > 0) out[key] = (out[key] ?? 0) + n;
+    };
+    for (const tb of tables) {
+      if (tb.status === 'CLOSED') continue; // counted from the projection below
+      add(tableListStatus(tb, progress.get(tb.summary.tableId)?.lastProgressAt ?? tb.lastHandAt ?? null, now, ctx.env.stallThresholdMs));
+      if (tb.frozen) add('FROZEN');
+      if (tb.summary.status === 'BREAKING') add('BREAKING');
+    }
+    add('CLOSED', (await ctx.store.repos.tableLogs.listTables(tournamentId, { statuses: ['CLOSED'], limit: 1 })).total);
+    return out;
   }
 
   // ------------------------------------------------------------------ list / create / overview
@@ -344,18 +376,17 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
     const q = req.query as Record<string, unknown>;
     const now = ctx.now();
     const stallMs = ctx.env.stallThresholdMs;
-    const dTables = (await game.directorQuery<DirectorTable[]>(tournament.id, { q: 'TABLES' })) ?? [];
-    const meta = await ctx.store.repos.tableLogs.listTables(tournament.id, { limit: 1000 });
-    const metaById = new Map(meta.rows.map((m) => [m.id, m]));
     const status = strParam(q.status, 40);
+    if (status === 'CLOSED') return closedTables(tournament.id, intParam(q.offset, 0), intParam(q.limit, 50, 1, 500));
+    const dTables = (await game.directorQuery<DirectorTable[]>(tournament.id, { q: 'TABLES' })) ?? [];
+    const progress = await progressByTable(tournament.id);
     let rows: TableListItemDto[] = dTables.map((t) => {
-      const m = metaById.get(t.summary.tableId);
-      const lastProgressAt = m?.lastProgressAt?.getTime() ?? t.lastHandAt ?? null;
-      const stalled = (t.status === 'IN_HAND' || t.status === 'BETWEEN_HANDS') && !t.frozen && t.holds.length === 0 && lastProgressAt !== null && now - lastProgressAt > stallMs;
+      const m = progress.get(t.summary.tableId);
+      const lastProgressAt = m?.lastProgressAt ?? t.lastHandAt ?? null;
       return {
         tableId: t.summary.tableId,
         tableNumber: t.summary.tableNumber,
-        status: stalled ? 'STALLED' : t.status,
+        status: tableListStatus(t, lastProgressAt, now, stallMs),
         holds: t.holds,
         frozen: t.frozen,
         players: t.summary.seats.length,
@@ -368,7 +399,8 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
         breaking: t.summary.status === 'BREAKING',
       };
     });
-    if (status) rows = rows.filter((r) => r.status === status);
+    // Closed tables are listed only on request (status=CLOSED, served from the projection above).
+    rows = rows.filter((r) => (status ? r.status === status : r.status !== 'CLOSED'));
     const min = strParam(q.minPlayers);
     const max = strParam(q.maxPlayers);
     if (min) rows = rows.filter((r) => r.players >= Number(min));
@@ -399,6 +431,28 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
     );
     return { rows: page, total: rows.length, offset, limit };
   });
+
+  /** Johnny lists open tables only; closed ones are served from the table projection, by number. */
+  async function closedTables(tournamentId: string, offset: number, limit: number): Promise<Paginated<TableListItemDto>> {
+    const page = await ctx.store.repos.tableLogs.listTables(tournamentId, { statuses: ['CLOSED'], offset, limit });
+    const rows = page.rows.map(
+      (m): TableListItemDto => ({
+        tableId: m.id,
+        tableNumber: m.tableNumber,
+        status: 'CLOSED',
+        holds: [],
+        frozen: false,
+        players: 0,
+        maxSeats: m.maxSeats,
+        handNumber: m.handsPlayed,
+        isFinalTable: m.isFinalTable,
+        lastProgressAt: m.lastProgressAt?.getTime() ?? null,
+        disconnectedPlayers: 0,
+        chips: 0,
+      }),
+    );
+    return { rows, total: page.total, offset, limit };
+  }
 
   app.post<P>(`${T}/integrity-check`, async (req) => {
     const { principal, tournament } = await adminForTournament(deps, req, 'TABLE_CONTROL', req.params.id);

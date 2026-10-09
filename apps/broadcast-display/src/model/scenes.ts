@@ -84,12 +84,14 @@ export function availableScenes(s: DisplayState): SceneId[] {
 }
 
 /**
- * Which scene is on screen. Precedence: an S-key pick, the admin's choice,
- * the champion (tournament complete), a fresh announcement, the break
- * screen, then the idle rotation.
+ * Which scene is on screen. Precedence: an S-key pick, a fresh announcement
+ * (for ANNOUNCEMENT_HOLD_MS), the admin's choice (held until the admin picks
+ * another scene; cleared when the tournament completes), the champion, the
+ * break screen, then the idle rotation.
  */
 export function resolveScene(s: DisplayState, ctx: SceneContext): SceneId {
   if (ctx.localPick && ctx.now < ctx.localPick.until && isSceneAvailable(s, ctx.localPick.scene)) return ctx.localPick.scene;
+  if (s.announcement && ctx.now - s.announcement.at < ANNOUNCEMENT_HOLD_MS) return 'ANNOUNCEMENT';
   const admin = s.adminScene?.scene;
   if (admin && admin !== 'AUTO') {
     // The admin's FEATURED_TABLE choice shows the final-table dressing once the final table plays.
@@ -97,7 +99,6 @@ export function resolveScene(s: DisplayState, ctx: SceneContext): SceneId {
     if (isSceneAvailable(s, wanted)) return wanted;
   }
   if (isSceneAvailable(s, 'CHAMPION')) return 'CHAMPION';
-  if (s.announcement && ctx.now - s.announcement.at < ANNOUNCEMENT_HOLD_MS) return 'ANNOUNCEMENT';
   if (isSceneAvailable(s, 'BREAK')) return 'BREAK';
   const list = rotationScenes(s);
   return list[((ctx.rotationIndex % list.length) + list.length) % list.length] ?? 'OVERVIEW';

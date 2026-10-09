@@ -505,6 +505,7 @@ export function createDemoEngine(preset: DemoPreset, seed: number, startedAt: nu
     }
     const pot = h.pot;
     bySeat(winner).stack += pot;
+    h.pot = 0;
     largestPot = Math.max(largestPot, pot);
     handsCompleted += 1;
     events.push(

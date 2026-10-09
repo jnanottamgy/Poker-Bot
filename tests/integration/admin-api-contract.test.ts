@@ -325,7 +325,7 @@ describe.skipIf(!TEST_DATABASE_URL)('admin app client ↔ real game server', () 
     // A few (passive) hands, then pause so every table is quiet for the controls.
     await waitFor('three hands', async () => (await admin.api.tournaments.overview(id)).counters.handsCompleted >= 3, 60_000);
     S.check('pause', await admin.api.lifecycle.pause(id, { reason: REASON }), S.OK);
-    await waitFor('tables idle', async () => (await admin.api.tables.list(id)).rows.every((t) => t.status !== 'IN_HAND'), 30_000);
+    await waitFor('tables held', async () => (await admin.api.tables.list(id)).rows.every((t) => t.status === 'HELD'), 30_000);
     expect((await admin.api.tournaments.list({ status: 'PAUSED' })).tournaments.map((t) => t.id)).toEqual([id]);
   });
 
@@ -335,6 +335,7 @@ describe.skipIf(!TEST_DATABASE_URL)('admin app client ↔ real game server', () 
     S.check('overview.stats', overview.stats, S.STATS);
     S.check('overview.chipConservation', overview.chipConservation, S.CHIP_CONSERVATION);
     S.check('overview.summary', overview.summary, S.SUMMARY);
+    expect(overview.tablesByStatus).toEqual({ HELD: overview.counters.tables });
 
     const tables = S.checkPage('tables', await admin.api.tables.list(id), S.TABLE_ITEM);
     expect(tables.total).toBeGreaterThanOrEqual(2);
@@ -418,7 +419,9 @@ describe.skipIf(!TEST_DATABASE_URL)('admin app client ↔ real game server', () 
     const y = tables.find((t) => t.tableId !== x.tableId && t.players < t.maxSeats)!;
 
     // tables
-    for (const op of ['hold', 'release', 'freeze', 'unfreeze'] as const) S.check(op, await admin.api.tables[op](x.tableId, { reason: REASON }), S.OK);
+    for (const op of ['hold', 'release', 'freeze'] as const) S.check(op, await admin.api.tables[op](x.tableId, { reason: REASON }), S.OK);
+    await waitFor('frozen table counted', async () => (await admin.api.tournaments.overview(id)).tablesByStatus.FROZEN === 1, 10_000);
+    S.check('unfreeze', await admin.api.tables.unfreeze(x.tableId, { reason: REASON }), S.OK);
     const view = (await admin.api.tables.detail(x.tableId)).view;
     S.check('force-timeout', await admin.api.tables.forceTimeout(x.tableId, { reason: REASON, turnVersion: view.turn?.turnVersion ?? 0 }), S.OK);
     const noReason = await apiError(admin.api.tables.forceTimeout(x.tableId, { reason: '' }));
@@ -503,6 +506,11 @@ describe.skipIf(!TEST_DATABASE_URL)('admin app client ↔ real game server', () 
     expect([noWord.status, noWord.code]).toEqual([400, 'CONFIRMATION_REQUIRED']);
     S.check('cancel', await admin.api.lifecycle.cancel(id, { reason: REASON, confirm: 'CANCEL' }), S.OK);
     expect((await admin.api.tournaments.overview(id)).status).toBe('CANCELLED');
+    await waitFor('tables closed', async () => (await admin.api.tables.list(id)).total === 0, 15_000);
+    const closed = S.checkPage('tables?status=CLOSED', await admin.api.tables.list(id, { status: 'CLOSED', limit: 2 }), S.TABLE_ITEM);
+    expect(closed.total).toBeGreaterThanOrEqual(2);
+    expect(closed.rows.every((t) => t.status === 'CLOSED')).toBe(true);
+    expect((await admin.api.tournaments.overview(id)).tablesByStatus.CLOSED).toBe(closed.total);
     const finish = S.check('standings finish', await admin.api.standings.get(id, { mode: 'finish' }), S.LEADERBOARD);
     expect(finish.label).toBe('Finishing positions');
     expect((await admin.api.reports.get(id)).status).toBe('CANCELLED');
