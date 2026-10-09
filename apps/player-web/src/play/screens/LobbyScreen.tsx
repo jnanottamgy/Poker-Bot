@@ -15,6 +15,8 @@ export interface LobbyScreenProps {
   onSettings: () => void;
 }
 
+const NOT_STARTED: ReadonlySet<string> = new Set(['DRAFT', 'REGISTRATION', 'REGISTRATION_CLOSED', 'STARTING']);
+
 function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
 }
@@ -38,16 +40,25 @@ export function LobbyScreen({ self, tournament, serverOffsetMs, startTime, start
         { label: 'Starting stack', value: formatChips(stack), emphasis: true },
       ];
   const countdownLabel = starting ? 'Tournament starting' : 'Starts in';
+  // Late registration / re-entry: play is already under way and the seat is being assigned.
+  const underway = !NOT_STARTED.has(tournament.status);
+  const lede = underway
+    ? 'You are in. Johnny is assigning you a seat at a table with room — it appears here in a moment.'
+    : seated
+      ? 'Your seat is ready. Cards are dealt automatically when the clock starts.'
+      : 'You are registered. Seats are announced when the tournament starts.';
 
   return (
-    <Screen eyebrow="Welcome" title={`Welcome, ${firstName(self.displayName)}`} lede={seated ? 'Your seat is ready. Cards are dealt automatically when the clock starts.' : 'You are registered. Seats are announced when the tournament starts.'} className="pw-lobby">
+    <Screen eyebrow="Welcome" title={`Welcome, ${firstName(self.displayName)}`} lede={lede} className="pw-lobby">
       <InfoTiles tiles={tiles} />
-      <div className="pw-countdown" role="timer" aria-label={target ? `${countdownLabel} in ${formatClock(remaining)}` : 'Starting soon'}>
-        <span className="pw-countdown__label">{target ? countdownLabel : 'Starting soon'}</span>
-        <span className="pw-countdown__value jpb-num" aria-hidden="true">
-          {target ? formatClock(remaining) : '--:--'}
-        </span>
-      </div>
+      {!underway && (
+        <div className="pw-countdown" role="timer" aria-label={target ? `${countdownLabel} in ${formatClock(remaining)}` : 'Starting soon'}>
+          <span className="pw-countdown__label">{target ? countdownLabel : 'Starting soon'}</span>
+          <span className="pw-countdown__value jpb-num" aria-hidden="true">
+            {target ? formatClock(remaining) : '--:--'}
+          </span>
+        </div>
+      )}
       <p className="pw-lobby__meta">
         <span className="jpb-num">{formatCount(tournament.counters.registered)}</span> {tournament.counters.registered === 1 ? 'player' : 'players'} registered · Player ID{' '}
         <span className="jpb-mono">{self.publicId}</span>
