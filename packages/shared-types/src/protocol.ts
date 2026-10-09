@@ -76,6 +76,8 @@ export type ServerMessage =
   | { t: 'action_result'; st: EpochMs; actionId: ActionId; ok: boolean; code: ActionRejectCode | null; message: string | null }
   | { t: 'pong'; st: EpochMs; ct: EpochMs }
   | { t: 'notice'; st: EpochMs; notice: PlayerNotice }
+  /** DISPLAY sockets only: the scene an admin chose for the big screen ('AUTO' = rotate); tableId null = director's featured table. */
+  | { t: 'display_scene'; st: EpochMs; scene: string; tableId: TableId | null }
   | { t: 'error'; st: EpochMs; code: string; message: string };
 
 export interface TournamentPublicSummary {
