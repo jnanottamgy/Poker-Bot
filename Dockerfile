@@ -15,7 +15,6 @@ RUN npm ci --no-audit --no-fund \
  && npm prune --omit=dev --no-audit --no-fund
 
 FROM node:22-alpine AS runtime
-RUN apk add --no-cache tini
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080 \
@@ -26,5 +25,6 @@ USER node
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1
-ENTRYPOINT ["/sbin/tini", "--"]
+# PID 1 is node itself: main.ts handles SIGTERM/SIGINT gracefully and spawns no children
+# (compose adds `init: true` for signal forwarding and reaping anyway).
 CMD ["node", "--enable-source-maps", "--import", "tsx", "services/game-server/src/main.ts"]

@@ -28,6 +28,7 @@ services:
   app:
     build: .
     image: johnnys-poker-bot:latest
+    init: true
     restart: unless-stopped
     depends_on:
       postgres:

@@ -8,3 +8,7 @@
 !.env.example
 *.log
 packages/ui/gallery/screenshots
+apps/*/screenshots
+backups
+.secrets
+dump.rdb
