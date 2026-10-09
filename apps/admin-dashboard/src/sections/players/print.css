@@ -1,0 +1,22 @@
+/* Print-only portal shared by player cards and registration posters (classes acr-players-print*). */
+
+.acr-players-print {
+  display: none;
+}
+
+@media print {
+  body.acr-players-printing > *:not(.acr-players-print) {
+    display: none !important;
+  }
+  body.acr-players-printing {
+    background: #fff !important;
+  }
+  body.acr-players-printing > .acr-players-print {
+    display: block;
+    color: #000;
+    background: #fff;
+  }
+  @page {
+    margin: 12mm;
+  }
+}

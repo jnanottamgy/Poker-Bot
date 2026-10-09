@@ -4,6 +4,7 @@ import { TOURNAMENT_STATUS_META, formatClock, formatCount } from '@jpb/ui';
 import { useApi } from '../api/ApiProvider';
 import { qk } from '../api/query/keys';
 import type { TournamentState } from '../live/useTournamentState';
+import { clockModel } from '../lib/clock';
 import { useDangerousAction } from './DangerProvider';
 
 const statusLabel = (s: TournamentStatus | null) => (s ? TOURNAMENT_STATUS_META[s].label : '—');
@@ -21,10 +22,11 @@ export function useTournamentControls(tournamentId: string | null, state: Tourna
     const invalidate = [qk.tournament(id), qk.tournamentsAll()];
     const tables = state.counters?.tables ?? 0;
     const clockText = (() => {
-      const c = state.clock;
-      if (!c) return '—';
-      if (c.levelEndsAt === null) return `stopped at ${formatClock(c.pausedRemainingMs ?? 0)}`;
-      return `running · ${formatClock(Math.max(0, c.levelEndsAt - Date.now() - state.offsetMs))} left`;
+      const m = clockModel({ status: state.status, frozen: state.frozen, clock: state.clock, hasNextLevel: state.nextLevel !== null });
+      if (m.phase === 'not-started' || m.phase === 'ended') return '—';
+      if (m.phase === 'last-level') return 'last level · no end';
+      if (m.ticking && m.deadline !== null) return `${m.onBreak ? 'break' : 'running'} · ${formatClock(Math.max(0, m.deadline - Date.now() - state.offsetMs))} left`;
+      return m.heldRemainingMs === null ? m.label.toLowerCase() : `stopped at ${formatClock(m.heldRemainingMs)}`;
     })();
 
     return {

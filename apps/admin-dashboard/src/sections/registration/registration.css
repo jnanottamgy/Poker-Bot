@@ -1,0 +1,651 @@
+/* §2.9 Registration — classes prefixed acr-registration-. Tokens from @jpb/ui. */
+
+.acr-registration {
+  min-width: 0;
+}
+.acr-registration-dim {
+  color: var(--jpb-text-muted);
+}
+.acr-registration-body {
+  display: grid;
+  gap: var(--acr-gap, 16px);
+  min-width: 0;
+}
+.acr-registration-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 1fr);
+  gap: var(--acr-gap, 16px);
+  align-items: start;
+}
+.acr-registration-main,
+.acr-registration-side {
+  display: grid;
+  gap: var(--acr-gap, 16px);
+  min-width: 0;
+}
+.acr-registration-anchor {
+  scroll-margin-top: 120px;
+  border-radius: var(--jpb-radius-lg);
+}
+.acr-registration-anchor:focus-visible {
+  outline: 2px solid var(--jpb-focus);
+  outline-offset: 2px;
+}
+@media (max-width: 1180px) {
+  .acr-registration-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .acr-registration-side {
+    grid-row: 1;
+  }
+}
+.acr-registration-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-basis: 100%;
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  line-height: 1.45;
+}
+.acr-registration-note .jpb-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+.acr-registration-k {
+  margin: 14px 0 6px;
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------ hero */
+.acr-registration-hero {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1.1fr) minmax(0, 2fr);
+  gap: var(--jpb-space-4) var(--jpb-space-6);
+  align-items: center;
+  padding: var(--jpb-space-4) var(--jpb-space-5);
+  border: 1px solid var(--jpb-border);
+  border-radius: var(--jpb-radius-lg);
+  background:
+    radial-gradient(700px 200px at 0% 0%, var(--jpb-accent-soft), transparent 70%),
+    linear-gradient(180deg, var(--jpb-surface-2), var(--jpb-surface));
+}
+.acr-registration-hero__state {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.acr-registration-hero__detail {
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-registration-hero__count {
+  display: grid;
+  gap: 6px;
+  padding-left: var(--jpb-space-5);
+  border-left: 1px solid var(--jpb-border-strong);
+}
+.acr-registration-hero__big {
+  font-size: var(--jpb-fs-2xl);
+  font-weight: var(--jpb-weight-black);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.acr-registration-hero__of {
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-md);
+  font-weight: var(--jpb-weight-semibold);
+  letter-spacing: 0;
+}
+.acr-registration-hero__min {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-registration-hero__min .jpb-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--jpb-accent);
+}
+.acr-registration-hero__min.is-short .jpb-icon {
+  color: var(--jpb-warning);
+}
+.acr-registration-hero__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+  padding-left: var(--jpb-space-5);
+  border-left: 1px solid var(--jpb-border-strong);
+}
+.acr-registration-hero__facts dt {
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.acr-registration-hero__facts dd {
+  margin: 3px 0 0;
+  font-size: var(--jpb-fs-sm);
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-registration-hero__pending {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--jpb-warning);
+  font: inherit;
+  font-weight: var(--jpb-weight-bold);
+  cursor: pointer;
+}
+.acr-registration-hero__pending:disabled {
+  color: var(--jpb-text);
+  cursor: default;
+}
+.acr-registration-hero__pending:not(:disabled):hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.acr-registration-hero__pending:focus-visible {
+  outline: 2px solid var(--jpb-focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+@media (max-width: 1280px) {
+  .acr-registration-hero {
+    grid-template-columns: minmax(200px, 1fr) minmax(240px, 1.2fr);
+  }
+  .acr-registration-hero__facts {
+    grid-column: 1 / -1;
+    padding-left: 0;
+    padding-top: var(--jpb-space-3);
+    border-left: 0;
+    border-top: 1px solid var(--jpb-border);
+  }
+}
+@media (max-width: 720px) {
+  .acr-registration-hero {
+    grid-template-columns: 1fr;
+  }
+  .acr-registration-hero__count {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .acr-registration-hero__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------ lists */
+.acr-registration-paneltitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.acr-registration-badge {
+  min-width: 26px;
+  padding: 1px 8px;
+  border: 1px solid var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-pill);
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.acr-registration-badge.is-attn {
+  border-color: var(--jpb-warning-line);
+  background: var(--jpb-warning-soft);
+  color: var(--jpb-warning);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-registration-name {
+  color: var(--jpb-text);
+  font-weight: var(--jpb-weight-semibold);
+  text-decoration: none;
+}
+.acr-registration-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.acr-registration-pid {
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-registration-rowbtns {
+  display: inline-flex;
+  gap: 6px;
+}
+.acr-registration-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px var(--jpb-space-4);
+  border-bottom: 1px solid var(--jpb-border);
+  background: var(--jpb-accent-soft);
+  font-size: var(--jpb-fs-sm);
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-registration-failed {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px var(--jpb-space-4);
+  border-bottom: 1px solid var(--jpb-border);
+  background: var(--jpb-warning-soft);
+  font-size: var(--jpb-fs-sm);
+  list-style: none;
+}
+.acr-registration-failed .jpb-icon {
+  color: var(--jpb-warning);
+}
+.acr-registration-listbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px var(--jpb-space-4);
+  border-bottom: 1px solid var(--jpb-border);
+}
+.acr-registration-listsearch {
+  flex: 1 1 220px;
+  max-width: 340px;
+}
+
+/* ------------------------------------------------------------ lifecycle & start */
+.acr-registration-stack {
+  display: grid;
+  gap: 10px;
+}
+.acr-registration-seating {
+  display: grid;
+  flex-basis: 100%;
+  gap: 8px;
+}
+.acr-registration-seating__group {
+  display: grid;
+  gap: 4px;
+}
+.acr-registration-seating__tables {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.acr-registration-seating__table {
+  width: 18px;
+  height: 11px;
+  border: 1px solid var(--jpb-gold-line);
+  border-radius: 6px;
+  background: var(--jpb-gold-soft);
+}
+.acr-registration-seating__more {
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-registration-seating__label {
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-registration-checks {
+  display: grid;
+  flex-basis: 100%;
+  gap: 4px;
+  margin: 2px 0 4px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--jpb-fs-sm);
+}
+.acr-registration-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.acr-registration-checks .jpb-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  color: var(--jpb-accent);
+}
+.acr-registration-checks li.is-warn .jpb-icon {
+  color: var(--jpb-warning);
+}
+.acr-registration-checks li.is-bad {
+  color: var(--jpb-text-2);
+}
+.acr-registration-checks li.is-bad .jpb-icon {
+  color: var(--jpb-danger);
+}
+.acr-registration-entropy {
+  flex-basis: 100%;
+  margin: 0;
+}
+.acr-registration-entropy .jpb-field__hint {
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------ QR */
+.acr-registration-qr {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.acr-registration-qr__img img {
+  display: block;
+  width: 200px;
+  height: 200px;
+  padding: 8px;
+  border-radius: var(--jpb-radius-md);
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--jpb-border-strong), 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.acr-registration-qr__err {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  width: 200px;
+  height: 200px;
+  padding: 12px;
+  border: 1px dashed var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-md);
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+  text-align: center;
+}
+.acr-registration-qr__side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.acr-registration-qr__field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.acr-registration-qr__k {
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.acr-registration-qr__url {
+  overflow-wrap: anywhere;
+  font-size: var(--jpb-fs-xs);
+}
+.acr-registration-qr__v {
+  font-size: var(--jpb-fs-md);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-registration-qr__access {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.acr-registration-qr__code {
+  padding: 3px 10px;
+  border: 1px solid var(--jpb-gold-line);
+  border-radius: var(--jpb-radius-sm);
+  background: var(--jpb-bg);
+  color: var(--jpb-gold-strong);
+  font-size: var(--jpb-fs-lg);
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.1em;
+}
+.acr-registration-qr__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+@media (max-width: 520px) {
+  .acr-registration-qr {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------ manual registration */
+.acr-registration-form {
+  display: grid;
+  gap: 12px;
+}
+.acr-registration-form .jpb-field {
+  margin: 0;
+}
+.acr-registration-form > .jpb-btn {
+  justify-self: start;
+}
+.acr-registration-result {
+  display: grid;
+  gap: 12px;
+}
+.acr-registration-result__ok {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--jpb-text);
+  font-size: var(--jpb-fs-sm);
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-registration-result__ok .jpb-icon {
+  color: var(--jpb-accent);
+}
+.acr-registration-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.acr-registration-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.acr-registration-fields li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-pill);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-registration-fields .jpb-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--jpb-text-muted);
+}
+.acr-registration-fields li.is-required .jpb-icon {
+  color: var(--jpb-accent);
+}
+
+/* ------------------------------------------------------------ projector */
+.acr-registration-projector {
+  position: fixed;
+  z-index: var(--jpb-z-overlay, 900);
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: clamp(16px, 3vw, 40px);
+  background:
+    radial-gradient(1200px 700px at 20% 10%, rgba(39, 229, 122, 0.08), transparent 60%),
+    var(--jpb-bg);
+  color: var(--jpb-text);
+}
+.acr-registration-projector:focus {
+  outline: none;
+}
+.acr-registration-projector__bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.acr-registration-projector__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(24px, 5vw, 80px);
+  align-items: center;
+  max-width: 1700px;
+  width: 100%;
+  margin: 0 auto;
+}
+.acr-registration-projector__text {
+  display: grid;
+  gap: clamp(10px, 1.6vh, 22px);
+  min-width: 0;
+}
+.acr-registration-projector__eyebrow {
+  color: var(--jpb-accent);
+  font-size: clamp(16px, 1.6vw, 26px);
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: var(--jpb-tracking-caps);
+  text-transform: uppercase;
+}
+.acr-registration-projector__name {
+  font-family: var(--jpb-font-display);
+  font-size: clamp(40px, 5.4vw, 104px);
+  font-weight: var(--jpb-weight-black);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.acr-registration-projector__cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--jpb-text-2);
+  font-size: clamp(20px, 2.2vw, 40px);
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-registration-projector__cta .jpb-icon {
+  width: 1em;
+  height: 1em;
+  color: var(--jpb-accent);
+}
+.acr-registration-projector__url {
+  overflow-wrap: anywhere;
+  font-family: var(--jpb-font-mono);
+  font-size: clamp(20px, 2.4vw, 44px);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-registration-projector__code {
+  color: var(--jpb-text-2);
+  font-size: clamp(18px, 2vw, 36px);
+}
+.acr-registration-projector__code strong {
+  margin-left: 8px;
+  padding: 2px 14px;
+  border: 2px solid var(--jpb-gold-line);
+  border-radius: var(--jpb-radius-md);
+  color: var(--jpb-gold-strong);
+  font-family: var(--jpb-font-mono);
+  letter-spacing: 0.12em;
+}
+.acr-registration-projector__count {
+  color: var(--jpb-text-muted);
+  font-size: clamp(16px, 1.6vw, 28px);
+}
+.acr-registration-projector__count .jpb-num {
+  color: var(--jpb-text);
+  font-weight: var(--jpb-weight-black);
+}
+.acr-registration-projector__qr {
+  width: min(72vh, 46vw);
+  height: min(72vh, 46vw);
+}
+.acr-registration-projector__qr img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 3%;
+  border-radius: 18px;
+  background: #fff;
+}
+@media (max-width: 900px) {
+  .acr-registration-projector__body {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+  .acr-registration-projector__cta {
+    justify-content: center;
+  }
+  .acr-registration-projector__qr {
+    width: min(60vh, 80vw);
+    height: min(60vh, 80vw);
+  }
+}
+
+/* ------------------------------------------------------------ poster (print only) */
+.acr-registration-poster {
+  display: grid;
+  justify-items: center;
+  gap: 6mm;
+  padding: 10mm 6mm;
+  color: #000;
+  background: #fff;
+  font-family: var(--jpb-font-sans);
+  text-align: center;
+}
+.acr-registration-poster__eyebrow {
+  font-size: 14pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.acr-registration-poster__name {
+  font-size: 40pt;
+  font-weight: 900;
+  line-height: 1.05;
+}
+.acr-registration-poster__when {
+  font-size: 16pt;
+}
+.acr-registration-poster__cta {
+  font-size: 26pt;
+  font-weight: 800;
+}
+.acr-registration-poster__qr {
+  width: 120mm;
+  height: 120mm;
+}
+.acr-registration-poster__url {
+  font-family: var(--jpb-font-mono);
+  font-size: 16pt;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.acr-registration-poster__code {
+  font-size: 18pt;
+}
+.acr-registration-poster__code strong {
+  padding: 1mm 4mm;
+  border: 0.6mm solid #000;
+  border-radius: 2mm;
+  font-family: var(--jpb-font-mono);
+  letter-spacing: 0.12em;
+}
+.acr-registration-poster__steps {
+  max-width: 150mm;
+  margin: 0;
+  padding-left: 7mm;
+  font-size: 13pt;
+  line-height: 1.5;
+  text-align: left;
+}
+.acr-registration-poster__foot {
+  font-size: 10pt;
+}

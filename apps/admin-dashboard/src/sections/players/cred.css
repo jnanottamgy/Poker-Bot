@@ -1,0 +1,190 @@
+/* Player credential (seat) card — classes acr-players-cred*. Screen + paper variants. */
+
+.acr-players-cred {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--jpb-gold-line);
+  border-radius: var(--jpb-radius-lg);
+  background:
+    radial-gradient(600px 180px at 0% 0%, var(--jpb-gold-soft), transparent 70%),
+    var(--jpb-surface-2);
+}
+.acr-players-cred__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--jpb-border-strong);
+}
+.acr-players-cred__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--jpb-gold);
+  font-size: var(--jpb-fs-xs);
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: var(--jpb-tracking-caps);
+  text-transform: uppercase;
+}
+.acr-players-cred__seat {
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-players-cred__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+.acr-players-cred__main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.acr-players-cred__name {
+  font-family: var(--jpb-font-display);
+  font-size: var(--jpb-fs-lg);
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: -0.01em;
+}
+.acr-players-cred__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 0;
+}
+.acr-players-cred__facts dt {
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: var(--jpb-tracking-caps);
+  text-transform: uppercase;
+}
+.acr-players-cred__facts dd {
+  margin: 2px 0 0;
+  font-size: var(--jpb-fs-md);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-players-cred__code dd {
+  padding: 4px 10px;
+  border: 1px solid var(--jpb-gold-line);
+  border-radius: var(--jpb-radius-sm);
+  background: var(--jpb-bg);
+  color: var(--jpb-gold-strong);
+  font-size: var(--jpb-fs-xl);
+  letter-spacing: 0.12em;
+}
+.acr-players-cred__steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-players-cred__url {
+  overflow-wrap: anywhere;
+  color: var(--jpb-text);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-players-cred__link {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--jpb-radius-sm);
+  background: var(--jpb-neutral-soft);
+}
+.acr-players-cred__linklabel {
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-players-cred__qr {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.acr-players-cred__qr img {
+  display: block;
+  width: 168px;
+  height: 168px;
+  padding: 6px;
+  border-radius: var(--jpb-radius-sm);
+  background: #fff;
+}
+.acr-players-cred__qr figcaption {
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-players-cred__noqr {
+  display: grid;
+  place-items: center;
+  width: 168px;
+  height: 168px;
+  border: 1px dashed var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-sm);
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  text-align: center;
+}
+.acr-players-cred__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.acr-players-cred__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-players-cred__warn .jpb-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+
+/* Paper: black on white, generous, fits an A6 / half-letter card. */
+.acr-players-cred.is-print {
+  max-width: 150mm;
+  margin: 0 auto;
+  padding: 8mm;
+  border: 1.5pt solid #000;
+  border-radius: 4mm;
+  background: #fff;
+  color: #000;
+}
+.acr-players-cred.is-print .acr-players-cred__brand,
+.acr-players-cred.is-print .acr-players-cred__seat,
+.acr-players-cred.is-print .acr-players-cred__facts dt,
+.acr-players-cred.is-print .acr-players-cred__steps,
+.acr-players-cred.is-print .acr-players-cred__qr figcaption,
+.acr-players-cred.is-print .acr-players-cred__warn,
+.acr-players-cred.is-print .acr-players-cred__url {
+  color: #000;
+}
+.acr-players-cred.is-print .acr-players-cred__head {
+  border-bottom-color: #000;
+}
+.acr-players-cred.is-print .acr-players-cred__code dd {
+  border-color: #000;
+  background: #fff;
+  color: #000;
+}
+.acr-players-cred.is-print .acr-players-cred__qr img {
+  width: 48mm;
+  height: 48mm;
+  padding: 0;
+}
+
+@media (max-width: 560px) {
+  .acr-players-cred__body {
+    grid-template-columns: 1fr;
+  }
+}

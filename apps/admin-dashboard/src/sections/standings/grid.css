@@ -1,0 +1,81 @@
+/* Virtualized grid shared by Standings, Payouts and the prize ladder (acr-standings-vg-). */
+
+.acr-standings-vg {
+  position: relative;
+  height: clamp(380px, calc(100dvh - 330px), 1100px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.acr-standings-vg:focus-visible {
+  outline: 2px solid var(--jpb-focus);
+  outline-offset: -2px;
+}
+.acr-standings-vg__table {
+  font-size: var(--jpb-fs-sm);
+}
+.acr-standings-vg__head {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  background: var(--jpb-surface-2);
+  box-shadow: 0 1px 0 var(--jpb-border-strong);
+}
+.acr-standings-vg__body {
+  position: relative;
+}
+.acr-standings-vg__row {
+  display: grid;
+  grid-template-columns: var(--acr-vg-tracks);
+  align-items: center;
+  height: var(--acr-vg-row, 48px);
+  padding: 0 var(--jpb-space-4) 0 var(--jpb-space-3);
+  border-bottom: 1px solid var(--jpb-border);
+}
+.acr-standings-vg__body .acr-standings-vg__row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+.acr-standings-vg__row--head {
+  height: 38px;
+  border-bottom: 0;
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.acr-standings-vg__row.is-interactive {
+  cursor: pointer;
+}
+.acr-standings-vg__row.is-interactive:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+.acr-standings-vg__row:focus-visible {
+  outline: 2px solid var(--jpb-focus);
+  outline-offset: -2px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.acr-standings-vg__row.is-selected {
+  background: var(--jpb-accent-soft);
+  box-shadow: inset 3px 0 0 var(--jpb-accent);
+}
+.acr-standings-vg__cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.acr-standings-vg__row--head .acr-standings-vg__cell {
+  overflow: visible;
+}
+.acr-standings-vg__cell.is-num {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

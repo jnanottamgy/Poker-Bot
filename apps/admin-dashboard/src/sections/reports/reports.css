@@ -1,0 +1,412 @@
+/* §2.18 Reports — classes prefixed acr-reports-. Tokens from @jpb/ui. Print rules at the end. */
+
+.acr-reports {
+  min-width: 0;
+}
+.acr-reports-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--jpb-space-2);
+}
+.acr-reports-bar__time {
+  margin-right: auto;
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.acr-reports-bar__time.is-stale {
+  color: var(--jpb-warning);
+}
+
+/* ------------------------------------------------------------ the document */
+.acr-reports-paper {
+  min-width: 0;
+}
+.acr-reports-doc {
+  --acr-reports-ink: var(--jpb-text);
+  --acr-reports-ink-2: var(--jpb-text-2);
+  --acr-reports-ink-3: var(--jpb-text-muted);
+  --acr-reports-rule: var(--jpb-border);
+  --acr-reports-rule-strong: var(--jpb-border-strong);
+  --acr-reports-accent: var(--jpb-gold);
+  display: grid;
+  gap: var(--jpb-space-6);
+  max-width: 1080px;
+  padding: var(--jpb-space-8) var(--jpb-space-8) var(--jpb-space-6);
+  border: 1px solid var(--jpb-border);
+  border-radius: var(--jpb-radius-lg);
+  background:
+    radial-gradient(1200px 260px at 0% 0%, var(--jpb-gold-soft), transparent 60%),
+    linear-gradient(180deg, var(--jpb-surface-2), var(--jpb-surface));
+  color: var(--acr-reports-ink);
+}
+.acr-reports-doc--loading {
+  gap: var(--jpb-space-4);
+}
+.acr-reports-doc__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--jpb-space-4);
+  padding-bottom: var(--jpb-space-5);
+  border-bottom: 2px solid var(--acr-reports-rule-strong);
+}
+.acr-reports-doc__eyebrow {
+  margin: 0 0 6px;
+  color: var(--acr-reports-accent);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: var(--jpb-tracking-caps);
+  text-transform: uppercase;
+}
+.acr-reports-doc__title {
+  margin: 0;
+  font-family: var(--jpb-font-display);
+  font-size: var(--jpb-fs-2xl);
+  font-weight: var(--jpb-weight-black);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.acr-reports-doc__meta {
+  margin: 8px 0 0;
+  color: var(--acr-reports-ink-3);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-reports-provisional {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--jpb-warning-line);
+  border-radius: var(--jpb-radius-md);
+  background: var(--jpb-warning-soft);
+  color: var(--acr-reports-ink);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-reports-provisional .jpb-icon {
+  flex: none;
+  color: var(--jpb-warning);
+}
+
+.acr-reports-champion {
+  display: flex;
+  align-items: center;
+  gap: var(--jpb-space-4);
+  padding: var(--jpb-space-4) var(--jpb-space-5);
+  border: 1px solid var(--jpb-gold-line);
+  border-radius: var(--jpb-radius-lg);
+  background: var(--jpb-gold-soft);
+}
+.acr-reports-champion > .jpb-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  color: var(--jpb-gold);
+}
+.acr-reports-champion > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.acr-reports-champion__label {
+  margin: 0;
+  color: var(--jpb-gold);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: var(--jpb-tracking-caps);
+  text-transform: uppercase;
+}
+.acr-reports-champion__name {
+  margin: 2px 0 0;
+  font-size: var(--jpb-fs-xl);
+  font-weight: var(--jpb-weight-black);
+}
+.acr-reports-champion__name .jpb-mono {
+  margin-left: 8px;
+  color: var(--acr-reports-ink-3);
+  font-size: var(--jpb-fs-sm);
+  font-weight: var(--jpb-weight-regular);
+}
+.acr-reports-champion__prize {
+  color: var(--jpb-gold);
+  font-size: var(--jpb-fs-xl);
+  font-weight: var(--jpb-weight-black);
+}
+
+.acr-reports-sec {
+  display: grid;
+  gap: var(--jpb-space-3);
+  min-width: 0;
+}
+.acr-reports-sec__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--acr-reports-rule);
+  font-size: var(--jpb-fs-md);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-reports-sec__count {
+  color: var(--acr-reports-ink-3);
+  font-size: var(--jpb-fs-xs);
+  font-weight: var(--jpb-weight-medium);
+}
+.acr-reports-figs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--acr-reports-rule);
+  border-left: 1px solid var(--acr-reports-rule);
+}
+.acr-reports-figs--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.acr-reports-figs--fair {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+}
+.acr-reports-fig {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-right: 1px solid var(--acr-reports-rule);
+  border-bottom: 1px solid var(--acr-reports-rule);
+  background: var(--jpb-surface);
+}
+.acr-reports-fig dt {
+  color: var(--acr-reports-ink-3);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.acr-reports-fig dd {
+  margin: 0;
+  font-size: var(--jpb-fs-md);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-reports-fig .acr-reports-fig__sub {
+  color: var(--acr-reports-ink-2);
+  font-size: var(--jpb-fs-xs);
+  font-weight: var(--jpb-weight-regular);
+}
+.acr-reports-hash {
+  font-size: var(--jpb-fs-xs) !important;
+  font-weight: var(--jpb-weight-regular) !important;
+  word-break: break-all;
+}
+.acr-reports-progress {
+  max-width: 560px;
+}
+.acr-reports-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--acr-reports-ink-3);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-reports-note .acr-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.acr-reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--jpb-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.acr-reports-table th,
+.acr-reports-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--acr-reports-rule);
+  text-align: left;
+}
+.acr-reports-table thead th {
+  color: var(--acr-reports-ink-3);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--acr-reports-rule-strong);
+}
+.acr-reports-table .is-num {
+  text-align: right;
+}
+.acr-reports-table tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.018);
+}
+.acr-reports-table tr.is-p1 td {
+  color: var(--jpb-gold);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-reports-table tr.is-p2 td,
+.acr-reports-table tr.is-p3 td {
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-reports-table tfoot th,
+.acr-reports-table tfoot td {
+  border-top: 2px solid var(--acr-reports-rule-strong);
+  border-bottom: 0;
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-reports-more {
+  display: none;
+}
+.acr-reports-showall {
+  justify-self: start;
+}
+.acr-reports-doc__foot {
+  padding-top: var(--jpb-space-4);
+  border-top: 1px solid var(--acr-reports-rule);
+  color: var(--acr-reports-ink-3);
+  font-size: var(--jpb-fs-xs);
+}
+
+@media (max-width: 1100px) {
+  .acr-reports-figs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .acr-reports-figs--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .acr-reports-doc {
+    padding: var(--jpb-space-5) var(--jpb-space-4);
+  }
+  .acr-reports-figs,
+  .acr-reports-figs--fair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .acr-reports-fig--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ------------------------------------------------------------ print: black on white, document only */
+@media print {
+  html:has(.acr-reports-doc),
+  body:has(.acr-reports-doc),
+  .jpb-shell:has(.acr-reports-doc),
+  .jpb-shell:has(.acr-reports-doc) .jpb-shell__main,
+  .jpb-shell:has(.acr-reports-doc) .jpb-shell__content,
+  .acr-content:has(.acr-reports-doc) {
+    background: #fff !important;
+    color: #000 !important;
+    filter: none !important;
+  }
+  .acr-reports .acr-page__head,
+  .acr-reports-noprint,
+  .acr-reports-bar {
+    display: none !important;
+  }
+  .acr-reports {
+    display: block;
+    max-width: none;
+  }
+  .acr-reports-paper.jpb-stale {
+    filter: none;
+  }
+  .acr-reports-doc {
+    --acr-reports-ink: #000;
+    --acr-reports-ink-2: #222;
+    --acr-reports-ink-3: #555;
+    --acr-reports-rule: #c8c8c8;
+    --acr-reports-rule-strong: #000;
+    --acr-reports-accent: #000;
+    display: block;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font-size: 10.5pt;
+  }
+  .acr-reports-doc > * + * {
+    margin-top: 14pt;
+  }
+  .acr-reports-sec {
+    display: block;
+    break-inside: auto;
+  }
+  .acr-reports-sec > * + * {
+    margin-top: 6pt;
+  }
+  .acr-reports-sec__title {
+    break-after: avoid;
+    color: #000;
+  }
+  .acr-reports-figs {
+    break-inside: avoid;
+  }
+  .acr-reports-more {
+    display: table-row !important;
+  }
+  .acr-reports-fig {
+    background: #fff;
+    color: #000;
+  }
+  .acr-reports-champion,
+  .acr-reports-provisional {
+    border: 1px solid #000;
+    background: #fff;
+    color: #000;
+    break-inside: avoid;
+  }
+  .acr-reports-champion > .jpb-icon,
+  .acr-reports-champion__label,
+  .acr-reports-champion__prize,
+  .acr-reports-provisional .jpb-icon {
+    color: #000;
+  }
+  .acr-reports-doc .jpb-pill {
+    border: 1px solid #000;
+    background: #fff;
+    color: #000;
+  }
+  .acr-reports-doc .jpb-pill__live {
+    display: none;
+  }
+  .acr-reports-table thead {
+    display: table-header-group;
+  }
+  .acr-reports-table tr {
+    break-inside: avoid;
+  }
+  .acr-reports-table tbody tr:nth-child(even) td {
+    background: #f3f3f3;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .acr-reports-table tr.is-p1 td {
+    color: #000;
+  }
+  .acr-reports-progress {
+    break-inside: avoid;
+  }
+  .acr-reports-progress .jpb-progress__track {
+    border: 1px solid #000;
+    background: #fff;
+  }
+  .acr-reports-progress .jpb-progress__fill {
+    background: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .acr-reports-progress .jpb-progress__label,
+  .acr-reports-progress .jpb-progress__value {
+    color: #000;
+  }
+  @page {
+    margin: 14mm 12mm;
+  }
+}

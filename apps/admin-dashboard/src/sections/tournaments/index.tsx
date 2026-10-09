@@ -14,6 +14,8 @@ import type { StatusGroup } from './statusGroups';
 import { TournamentTable } from './TournamentTable';
 
 const POLL_MS = 20_000;
+/** Default order: in play first, then registration, drafts, finished; newest first within a status. */
+const STATUS_ORDER = ['RUNNING', 'FINAL_TABLE', 'BREAK', 'PAUSED', 'STARTING', 'REGISTRATION', 'REGISTRATION_CLOSED', 'DRAFT', 'COMPLETED', 'CANCELLED'];
 
 /** §2.1 Tournaments: live-now cards, status filter, simulations toggle, search, create / clone / delete draft. */
 export default function TournamentsSection() {
@@ -27,7 +29,9 @@ export default function TournamentsSection() {
   const all = list.data?.tournaments ?? [];
   const filtered = useMemo(() => {
     const f = search.trim().toLowerCase();
-    return all.filter((t) => inGroup(t.status, group) && (!f || t.name.toLowerCase().includes(f) || t.joinCode.toLowerCase().includes(f)));
+    return all
+      .filter((t) => inGroup(t.status, group) && (!f || t.name.toLowerCase().includes(f) || t.joinCode.toLowerCase().includes(f)))
+      .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || b.createdAt - a.createdAt);
   }, [all, group, search]);
   const live = all.filter((t) => STATUS_GROUPS.live.includes(t.status));
   const counts = (g: StatusGroup) => all.filter((t) => inGroup(t.status, g)).length;

@@ -104,7 +104,7 @@ export function ControlRoomShell({ tournamentId, children }: { tournamentId: str
             )}
           </>
         }
-        status={tournamentId ? <TopStatus state={state} conn={conn} /> : undefined}
+        status={tournamentId ? <TopStatus state={state} conn={conn} stale={stale} /> : undefined}
         actions={<TopActions tournamentId={tournamentId} state={state} controls={controls} openAlerts={openAlerts} onSearch={() => setSearchOpen(true)} onShortcuts={() => setHelpOpen(true)} />}
         user={me ? { name: me.admin.displayName, role: me.admin.role } : undefined}
         banner={<ShellBanners tournamentId={tournamentId} frozen={state.frozen} stale={stale} conn={conn} lastLiveAt={lastLiveAt.current} controls={controls} />}

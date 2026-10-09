@@ -1,25 +1,28 @@
 import type { LiveMetricsPoint, TournamentOverviewDto } from '@jpb/shared-types';
 import { StackDisplay, StatTile, formatChips, formatChipsCompact, formatClock, formatCount, useServerCountdown } from '@jpb/ui';
 import type { TournamentState } from '../../live/useTournamentState';
+import { clockModel, shownRemaining } from '../../lib/clock';
 import { breakAfterLevel } from '../../lib/schedule';
 import { formatDuration, formatTimeOfDay } from '../../lib/time';
 import { ETA_FORMULA, delta, series, tableBreakdown } from './kpis';
 
 function NextLevelTile({ state, overview }: { state: TournamentState; overview: TournamentOverviewDto }) {
-  const clock = state.clock;
-  const onBreak = clock?.breakEndsAt !== null && clock?.breakEndsAt !== undefined;
-  const remaining = useServerCountdown(onBreak ? (clock?.breakEndsAt ?? null) : (clock?.levelEndsAt ?? null), state.offsetMs, { intervalMs: 500 });
-  if (!clock || !state.currentLevel) return <StatTile label="Next level" icon="clock" value="—" hint="Clock not running" />;
-  const paused = !onBreak && clock.levelEndsAt === null;
-  const shown = paused ? (clock.pausedRemainingMs ?? 0) : remaining;
+  const model = clockModel({ status: state.status, frozen: state.frozen, clock: state.clock, hasNextLevel: state.nextLevel !== null });
+  const remaining = useServerCountdown(model.deadline, state.offsetMs, { intervalMs: 500 });
+  if (!state.clock || !state.currentLevel || model.phase === 'not-started' || model.phase === 'ended') return <StatTile label="Next level" icon="clock" value="—" hint="Clock not running" />;
+  if (model.phase === 'last-level') return <StatTile label="Next level" icon="clock" value="—" hint="Last level of the schedule: blinds stay here" />;
+  const shown = shownRemaining(model, remaining);
+  const onBreak = model.phase === 'break';
+  const held = model.phase === 'paused' || model.phase === 'frozen';
+  const resume = overview.config.blindSchedule[model.playIndex] ?? null;
   const brk = breakAfterLevel(overview.config.breaks, state.currentLevel.level);
   return (
     <StatTile
       label={onBreak ? 'Break ends in' : brk ? 'Break in' : 'Next level in'}
       icon={onBreak ? 'coffee' : 'clock'}
-      value={formatClock(shown)}
-      tone={paused ? 'warning' : 'default'}
-      hint={paused ? 'Clock stopped' : onBreak ? `Then level ${state.currentLevel.level}` : brk ? `${Math.round(brk.durationSeconds / 60)}-min break after this level` : 'Level changes on the director clock'}
+      value={held && model.heldRemainingMs === null ? '—' : formatClock(shown)}
+      tone={held ? 'warning' : 'default'}
+      hint={held ? `Clock ${model.label.toLowerCase()}` : onBreak ? `Then level ${resume?.level ?? '—'}` : brk ? `${Math.round(brk.durationSeconds / 60)}-min break after this level` : 'Level changes on the director clock'}
     />
   );
 }

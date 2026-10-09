@@ -1,0 +1,547 @@
+/* §2.13 Payouts — classes prefixed acr-payouts-. Tokens from @jpb/ui. */
+
+.acr-payouts {
+  min-width: 0;
+}
+.acr-payouts-dim {
+  color: var(--jpb-text-muted);
+}
+
+/* ------------------------------------------------------------ totals */
+.acr-payouts-totals {
+  display: grid;
+  border: 1px solid var(--jpb-border);
+  border-radius: var(--jpb-radius-lg);
+  background: linear-gradient(180deg, var(--jpb-surface-2), var(--jpb-surface));
+  overflow: hidden;
+}
+.acr-payouts-totals__tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.acr-payouts-tile {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--jpb-space-4);
+  border-left: 1px solid var(--jpb-border);
+}
+.acr-payouts-tile:first-child {
+  border-left: 0;
+}
+.acr-payouts-tile__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.acr-payouts-tile__label .jpb-icon {
+  width: 14px;
+  height: 14px;
+}
+.acr-payouts-tile.is-gold .acr-payouts-tile__label .jpb-icon {
+  color: var(--jpb-gold);
+}
+.acr-payouts-tile.is-positive .acr-payouts-tile__label .jpb-icon {
+  color: var(--jpb-accent);
+}
+.acr-payouts-tile.is-warning .acr-payouts-tile__label .jpb-icon {
+  color: var(--jpb-warning);
+}
+.acr-payouts-tile__value {
+  overflow: hidden;
+  font-size: var(--jpb-fs-xl);
+  font-weight: var(--jpb-weight-black);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acr-payouts-tile.is-gold .acr-payouts-tile__value {
+  color: var(--jpb-gold);
+}
+.acr-payouts-tile__sub {
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-payouts-totals__bar {
+  padding: var(--jpb-space-3) var(--jpb-space-4);
+  border-top: 1px solid var(--jpb-border);
+}
+
+/* ------------------------------------------------------------ layout */
+.acr-payouts-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  align-items: start;
+  gap: var(--jpb-space-4);
+}
+.acr-payouts-main {
+  min-width: 0;
+}
+.acr-payouts-side {
+  position: sticky;
+  top: var(--jpb-space-4);
+  min-width: 0;
+}
+.acr-payouts-panelactions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--jpb-space-2);
+}
+.acr-payouts-updated {
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.acr-payouts-updated.is-stale {
+  color: var(--jpb-warning);
+}
+.acr-payouts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: var(--jpb-space-3) var(--jpb-space-4);
+  border-bottom: 1px solid var(--jpb-border);
+}
+.acr-payouts-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.acr-payouts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--jpb-neutral-line);
+  border-radius: var(--jpb-radius-pill);
+  background: var(--jpb-neutral-soft);
+  color: var(--jpb-text-2);
+  font: inherit;
+  font-size: var(--jpb-fs-sm);
+  font-weight: var(--jpb-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.acr-payouts-chip:hover {
+  border-color: var(--jpb-border-heavy);
+  color: var(--jpb-text);
+}
+.acr-payouts-chip:focus-visible {
+  outline: 2px solid var(--jpb-focus);
+  outline-offset: 2px;
+}
+.acr-payouts-chip .jpb-icon {
+  width: 15px;
+  height: 15px;
+}
+.acr-payouts-chip.is-warning .jpb-icon {
+  color: var(--jpb-warning);
+}
+.acr-payouts-chip.is-info .jpb-icon {
+  color: var(--jpb-info);
+}
+.acr-payouts-chip.is-positive .jpb-icon {
+  color: var(--jpb-accent);
+}
+.acr-payouts-chip.is-on {
+  border-color: var(--jpb-accent-line);
+  background: var(--jpb-accent-soft);
+  color: var(--jpb-text);
+  box-shadow: inset 0 0 0 1px var(--jpb-accent-line);
+}
+.acr-payouts-chip__n {
+  color: var(--jpb-text);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-payouts-search {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+.acr-payouts-alert {
+  padding: var(--jpb-space-3) var(--jpb-space-4) 0;
+}
+.acr-payouts-grid {
+  height: clamp(360px, calc(100dvh - 480px), 1000px);
+}
+.acr-payouts-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px var(--jpb-space-4);
+  border-top: 1px solid var(--jpb-border);
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.acr-payouts-foot .jpb-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+
+/* ------------------------------------------------------------ rows */
+.acr-payouts-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-payouts-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.acr-payouts-avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+}
+.acr-payouts-who__text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+.acr-payouts-name {
+  overflow: hidden;
+  color: var(--jpb-text);
+  font-weight: var(--jpb-weight-semibold);
+  text-decoration: none;
+  text-overflow: ellipsis;
+}
+.acr-payouts-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.acr-payouts-pid {
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+}
+.acr-payouts-prize {
+  color: var(--jpb-gold);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-payouts-by {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+.acr-payouts-by .acr-payouts-dim {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+.acr-payouts-ref {
+  overflow: hidden;
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-xs);
+  text-overflow: ellipsis;
+}
+.acr-payouts-quick.is-positive {
+  border-color: var(--jpb-accent-line);
+  color: var(--jpb-accent);
+}
+.acr-payouts-quick.is-info {
+  color: var(--jpb-info);
+}
+.acr-payouts-row--unpaid {
+  box-shadow: inset 3px 0 0 var(--jpb-warning-line);
+}
+.acr-payouts-row--processing {
+  box-shadow: inset 3px 0 0 var(--jpb-info-line);
+}
+
+/* ------------------------------------------------------------ payment panel */
+.acr-payouts-panel .jpb-panel__body {
+  display: grid;
+  gap: var(--jpb-space-4);
+}
+.acr-payouts-panel__title {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+.acr-payouts-panel__prize {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--jpb-space-3);
+}
+.acr-payouts-panel__amount {
+  color: var(--jpb-gold);
+  font-size: var(--jpb-fs-2xl);
+  font-weight: var(--jpb-weight-black);
+  letter-spacing: -0.02em;
+}
+.acr-payouts-panel__tie {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--jpb-info-line);
+  border-radius: var(--jpb-radius-md);
+  background: var(--jpb-info-soft);
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-payouts-panel__tie .jpb-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--jpb-info);
+}
+.acr-payouts-panel__links {
+  margin: 0;
+  font-size: var(--jpb-fs-sm);
+}
+.acr-payouts-panel__links .acr-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.acr-payouts-refcell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  word-break: break-all;
+}
+
+.acr-payouts-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.acr-payouts-step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  font-weight: var(--jpb-weight-semibold);
+  text-align: center;
+}
+.acr-payouts-step::before {
+  content: '';
+  position: absolute;
+  top: 15px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--jpb-border-strong);
+}
+.acr-payouts-step:first-child::before {
+  display: none;
+}
+.acr-payouts-step.is-done::before,
+.acr-payouts-step.is-current::before {
+  background: var(--jpb-accent-line);
+}
+.acr-payouts-step__dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--jpb-border-strong);
+  border-radius: 50%;
+  background: var(--jpb-surface);
+}
+.acr-payouts-step__dot .jpb-icon {
+  width: 15px;
+  height: 15px;
+}
+.acr-payouts-step.is-done .acr-payouts-step__dot {
+  border-color: var(--jpb-accent-line);
+  color: var(--jpb-accent);
+}
+.acr-payouts-step.is-current {
+  color: var(--jpb-text);
+}
+.acr-payouts-step.is-current .acr-payouts-step__dot {
+  border-color: var(--jpb-accent);
+  background: var(--jpb-accent-soft);
+  color: var(--jpb-accent);
+  box-shadow: 0 0 0 4px var(--jpb-accent-soft);
+}
+
+.acr-payouts-subhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--jpb-space-2);
+  font-size: var(--jpb-fs-sm);
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-payouts-subhead .jpb-icon {
+  color: var(--jpb-text-muted);
+}
+.acr-payouts-subhead .acr-payouts-dim {
+  font-weight: var(--jpb-weight-regular);
+}
+.acr-payouts-form {
+  display: grid;
+  gap: var(--jpb-space-3);
+  padding-top: var(--jpb-space-4);
+  border-top: 1px solid var(--jpb-border);
+}
+.acr-payouts-form .jpb-field {
+  margin: 0;
+}
+.acr-payouts-radios {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.acr-payouts-radio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-md);
+  background: var(--jpb-surface);
+  cursor: pointer;
+}
+.acr-payouts-radio:hover {
+  border-color: var(--jpb-border-heavy);
+}
+.acr-payouts-radio input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--jpb-accent);
+}
+.acr-payouts-radio input:focus-visible {
+  outline: 2px solid var(--jpb-focus);
+  outline-offset: 2px;
+}
+.acr-payouts-radio > .jpb-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.acr-payouts-radio.is-warning > .jpb-icon {
+  color: var(--jpb-warning);
+}
+.acr-payouts-radio.is-info > .jpb-icon {
+  color: var(--jpb-info);
+}
+.acr-payouts-radio.is-positive > .jpb-icon {
+  color: var(--jpb-accent);
+}
+.acr-payouts-radio span {
+  display: grid;
+  line-height: 1.25;
+}
+.acr-payouts-radio strong {
+  font-size: var(--jpb-fs-sm);
+}
+.acr-payouts-radio small {
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+}
+.acr-payouts-radio.is-on {
+  border-color: var(--jpb-accent-line);
+  background: var(--jpb-accent-soft);
+}
+.acr-payouts-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.acr-payouts-readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-md);
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+}
+
+.acr-payouts-history {
+  padding-top: var(--jpb-space-4);
+  border-top: 1px solid var(--jpb-border);
+}
+.acr-payouts-history p {
+  margin: 0;
+  font-size: var(--jpb-fs-sm);
+}
+.acr-payouts-history__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.acr-payouts-history__list li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--jpb-border-strong);
+  background: var(--jpb-neutral-soft);
+  border-radius: 0 var(--jpb-radius-sm) var(--jpb-radius-sm) 0;
+}
+.acr-payouts-history__line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--jpb-fs-sm);
+}
+.acr-payouts-history__line .jpb-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--jpb-text-muted);
+}
+.acr-payouts-history__ref {
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-payouts-history__meta {
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-payouts-history__note {
+  color: var(--jpb-text-2);
+  font-style: italic;
+}
+
+@media (max-width: 1200px) {
+  .acr-payouts-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .acr-payouts-side {
+    position: static;
+  }
+}
+@media (max-width: 900px) {
+  .acr-payouts-totals__tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .acr-payouts-tile:nth-child(3) {
+    border-left: 0;
+  }
+  .acr-payouts-tile:nth-child(n + 3) {
+    border-top: 1px solid var(--jpb-border);
+  }
+}

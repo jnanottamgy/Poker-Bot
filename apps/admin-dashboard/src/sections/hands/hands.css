@@ -1,0 +1,389 @@
+/* §2.10 Hands — classes prefixed acr-hands-. Tokens from @jpb/ui. */
+
+.acr-hands {
+  min-width: 0;
+}
+.acr-hands-dim {
+  color: var(--jpb-text-muted);
+}
+
+/* ------------------------------------------------------------ toolbar */
+.acr-hands-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding: var(--jpb-space-3) var(--jpb-space-4);
+  border: 1px solid var(--jpb-border);
+  border-radius: var(--jpb-radius-lg);
+  background: linear-gradient(180deg, var(--jpb-surface-2), var(--jpb-surface));
+}
+.acr-hands-toolbar .jpb-field {
+  margin: 0;
+}
+.acr-hands-select {
+  flex: 0 1 170px;
+  min-width: 150px;
+}
+.acr-hands-select .jpb-field__label,
+.acr-hands-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.acr-hands-select .jpb-field__label {
+  margin-bottom: 0;
+}
+.acr-hands-reset {
+  margin-left: auto;
+}
+
+/* number fields (hand #, min pot) */
+.acr-hands-num {
+  position: relative;
+  display: block;
+  flex: 0 1 130px;
+  min-width: 110px;
+}
+.acr-hands-num--pot {
+  flex-basis: 150px;
+}
+.acr-hands-num__input {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.acr-hands-num.is-invalid .acr-hands-num__input {
+  border-color: var(--jpb-danger-line);
+  box-shadow: 0 0 0 1px var(--jpb-danger-line);
+}
+.acr-hands-num__err {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--jpb-z-dropdown);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--jpb-danger-line);
+  border-radius: var(--jpb-radius-sm);
+  background: var(--jpb-elevated);
+  color: var(--jpb-danger);
+  font-size: var(--jpb-fs-xs);
+  white-space: nowrap;
+  box-shadow: var(--jpb-shadow-2);
+}
+.acr-hands-num__err .jpb-icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* lookup comboboxes (table, player) */
+.acr-hands-combo {
+  position: relative;
+  flex: 0 0 150px;
+}
+.acr-hands-combo--player {
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 320px;
+}
+.acr-hands-combo__box {
+  position: relative;
+  display: block;
+}
+.acr-hands-combo__icon {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  width: 16px;
+  height: 16px;
+  color: var(--jpb-text-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.acr-hands-combo__input {
+  width: 100%;
+  padding-left: 34px;
+}
+.acr-hands-combo__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--jpb-z-dropdown);
+  min-width: 100%;
+  width: max-content;
+  max-width: 340px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-md);
+  background: var(--jpb-elevated);
+  box-shadow: var(--jpb-shadow-3);
+  list-style: none;
+}
+.acr-hands-combo__opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 10px;
+  border-radius: var(--jpb-radius-sm);
+  cursor: pointer;
+}
+.acr-hands-combo__opt.is-active {
+  background: var(--jpb-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--jpb-accent-line);
+}
+.acr-hands-combo__main {
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-hands-combo__meta {
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+}
+.acr-hands-combo__note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-sm);
+}
+
+/* chosen table / player */
+.acr-hands-chipfield {
+  flex: 0 0 auto;
+}
+.acr-hands-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--jpb-accent-line);
+  border-radius: var(--jpb-radius-md);
+  background: var(--jpb-accent-soft);
+  color: var(--jpb-text);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-hands-chip > .jpb-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--jpb-accent);
+}
+.acr-hands-chip__text {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ summary */
+.acr-hands-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 36px;
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-hands-summary strong {
+  color: var(--jpb-text);
+  font-size: var(--jpb-fs-md);
+}
+
+/* ------------------------------------------------------------ grid */
+.acr-hands-body {
+  min-width: 0;
+}
+.acr-hands-skeleton {
+  display: grid;
+  gap: 8px;
+}
+.acr-hands-grid {
+  --acr-hands-tracks: 92px 72px 120px 132px 74px minmax(170px, 1.6fr) 196px 128px 28px;
+  border: 1px solid var(--jpb-border);
+  border-radius: var(--jpb-radius-lg);
+  background: var(--jpb-surface);
+  overflow: hidden;
+}
+.acr-hands-grid__scroll {
+  position: relative;
+  height: min(70vh, 760px);
+  min-height: 360px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.acr-hands-grid__body {
+  position: relative;
+  min-width: 100%;
+}
+.acr-hands-row {
+  display: grid;
+  grid-template-columns: var(--acr-hands-tracks);
+  align-items: center;
+  height: 52px;
+  min-width: 980px;
+  padding: 0 var(--jpb-space-3);
+  border-bottom: 1px solid var(--jpb-border);
+}
+.acr-hands-grid__body .acr-hands-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  cursor: pointer;
+}
+.acr-hands-row--head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 40px;
+  background: var(--jpb-surface-2);
+  color: var(--jpb-text-muted);
+  font-size: 11px;
+  font-weight: var(--jpb-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.acr-hands-grid__body .acr-hands-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+.acr-hands-row:focus-visible {
+  outline: 2px solid var(--jpb-focus);
+  outline-offset: -2px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.acr-hands-row.is-showdown {
+  box-shadow: inset 3px 0 0 var(--jpb-info-line);
+}
+.acr-hands-row.is-loading {
+  cursor: progress;
+}
+.acr-hands-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.acr-hands-cell.is-num {
+  justify-content: flex-end;
+  text-align: right;
+}
+.acr-hands-col--go {
+  justify-content: center;
+  color: var(--jpb-text-muted);
+}
+.acr-hands-col--go .jpb-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.acr-hands-no {
+  color: var(--jpb-text);
+  font-weight: var(--jpb-weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+.acr-hands-no:hover {
+  text-decoration: underline;
+}
+.acr-hands-table {
+  font-weight: var(--jpb-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.acr-hands-stack {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+.acr-hands-stack--end {
+  justify-items: end;
+}
+.acr-hands-sub {
+  overflow: hidden;
+  color: var(--jpb-text-muted);
+  font-size: var(--jpb-fs-xs);
+  text-overflow: ellipsis;
+}
+.acr-hands-level {
+  font-weight: var(--jpb-weight-semibold);
+}
+.acr-hands-pot {
+  font-weight: var(--jpb-weight-bold);
+}
+.acr-hands-winner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.acr-hands-winner .jpb-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--jpb-gold);
+}
+.acr-hands-winner__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.acr-hands-flags {
+  display: inline-flex;
+  gap: 6px;
+}
+.acr-hands-flags .jpb-badge {
+  gap: 4px;
+}
+.acr-hands-flags .jpb-icon {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+}
+.acr-hands-time {
+  display: grid;
+  line-height: 1.25;
+}
+
+/* ------------------------------------------------------------ narrower screens */
+@media (max-width: 1100px) {
+  .acr-hands-grid {
+    --acr-hands-tracks: 84px 64px 110px 120px minmax(150px, 1.4fr) 112px 120px 24px;
+  }
+  .acr-hands-row {
+    min-width: 760px;
+  }
+  .acr-hands-col--players {
+    display: none;
+  }
+  .acr-hands-flags .jpb-badge .jpb-icon {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .acr-hands-grid {
+    --acr-hands-tracks: 80px 60px 116px minmax(140px, 1.4fr) 112px 112px 24px;
+  }
+  .acr-hands-row {
+    min-width: 680px;
+  }
+  .acr-hands-col--level {
+    display: none;
+  }
+  .acr-hands-flags {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .acr-hands-reset {
+    margin-left: 0;
+  }
+}
