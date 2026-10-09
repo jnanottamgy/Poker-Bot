@@ -30,6 +30,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # The browser end-to-end test (tests/e2e/player-browser.test.ts) drives Chromium.
+      - run: env -u PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD npx playwright install --with-deps chromium
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

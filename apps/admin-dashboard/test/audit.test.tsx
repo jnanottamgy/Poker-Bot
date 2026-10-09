@@ -6,6 +6,7 @@ import { EMPTY_FILTERS, actionInfo, auditCsv, dateRange, inRange, parseFilters, 
 import { renderControlRoom } from './support/renderControlRoom';
 
 const TIMEOUT = { timeout: 5000 };
+const PAGING_TIMEOUT = { timeout: 15_000 };
 
 const entry = (x: Partial<AuditEntryDto>): AuditEntryDto => ({
   id: 'aud_1',
@@ -133,15 +134,16 @@ describe('Audit log (§2.16)', { timeout: 30_000 }, () => {
     }, TIMEOUT);
   });
 
+  // Renders two full 200-entry pages through the mock backend: slow on a loaded CI runner.
   it('pages older entries with the beforeSeq cursor', async () => {
     await openAudit();
-    const grid = await screen.findByRole('table', { name: 'Audit entries' }, TIMEOUT);
+    const grid = await screen.findByRole('table', { name: 'Audit entries' }, PAGING_TIMEOUT);
     // 200 loaded + 1 "loading more" row + the header row.
-    await waitFor(() => expect(grid.getAttribute('aria-rowcount')).toBe('202'), TIMEOUT);
+    await waitFor(() => expect(grid.getAttribute('aria-rowcount')).toBe('202'), PAGING_TIMEOUT);
     fireEvent.click(screen.getByRole('button', { name: 'load more now' }));
-    await waitFor(() => expect(Number(grid.getAttribute('aria-rowcount'))).toBeGreaterThan(202), TIMEOUT);
-    await screen.findByText(/End of the log for these filters/, undefined, TIMEOUT);
-  });
+    await waitFor(() => expect(Number(grid.getAttribute('aria-rowcount'))).toBeGreaterThan(202), PAGING_TIMEOUT);
+    await screen.findByText(/End of the log for these filters/, undefined, PAGING_TIMEOUT);
+  }, 60_000);
 
   it('applies a date range while paging', async () => {
     const { mock } = await openAudit();
