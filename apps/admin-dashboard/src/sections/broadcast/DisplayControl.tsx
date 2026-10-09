@@ -70,6 +70,7 @@ function LastChange({ tournamentId, local }: { tournamentId: string; local: Appl
 
 export interface DisplayControlProps {
   tournamentId: string;
+  joinCode: string | null;
   status: TournamentStatus | null;
   canControl: boolean;
   ctx: TemplateContext;
@@ -82,14 +83,14 @@ export interface DisplayControlProps {
  * §2.14 "Control the broadcast display: featured table, scene (overview,
  * leaderboard, final table, announcement, champion), milestone splash".
  */
-export function DisplayControl({ tournamentId, status, canControl, ctx, applied, onApplied, now }: DisplayControlProps) {
+export function DisplayControl({ tournamentId, joinCode, status, canControl, ctx, applied, onApplied, now }: DisplayControlProps) {
   const api = useApi();
   const toast = useToast();
   const danger = useDangerousAction();
   const id = useId();
   const [scene, setScene] = useState<DisplayScene>(applied?.scene ?? 'OVERVIEW');
   const [featured, setFeatured] = useState<PickedTable | null>(applied?.featured ?? null);
-  const url = displayUrl(typeof window === 'undefined' ? '' : window.location.origin, tournamentId);
+  const url = displayUrl(typeof window === 'undefined' ? '' : window.location.origin, tournamentId, joinCode);
 
   // At the final table there is one table left: offer it in one click.
   const finalQ = { sort: 'players' as const, offset: 0, limit: 2 };

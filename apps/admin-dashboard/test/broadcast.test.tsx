@@ -113,7 +113,7 @@ describe('Broadcast & announcements (§2.14)', { timeout: 20_000 }, () => {
   it('controls the big screen: scene + featured table, applied immediately (level 0)', async () => {
     const { mock } = await openBroadcast();
     expect((screen.getByRole('radio', { name: /Champion/ }) as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByText(/\/display\/\?t=trn_spring$/)).toBeTruthy();
+    expect(screen.getByText(/\/display\/\?t=trn_spring&code=[A-Z0-9]+$/)).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: /Leaderboard/ }));
     const table = mock.server.tournament('trn_spring').tables.find((x) => x.status !== 'CLOSED' && x.seats.some((s) => s !== null))!;
     const combo = screen.getByRole('combobox', { name: 'Featured table' });

@@ -28,7 +28,9 @@ export const SCOPES: readonly AnnounceScope[] = ['ALL', 'TABLE', 'PLAYER', 'DISP
 
 /** Scenes the broadcast display shows (API: POST /display { scene, featuredTableId? }). */
 export const SCENES: ReadonlyArray<{ id: DisplayScene; label: string; icon: IconName; description: string }> = [
+  { id: 'AUTO', label: 'Automatic', icon: 'refresh', description: 'The display rotates by itself: overview, featured table, leaderboard (and break, final table, champion when they apply).' },
   { id: 'OVERVIEW', label: 'Overview', icon: 'monitor', description: 'Clock, blinds, players left, prize pool and the featured table.' },
+  { id: 'FEATURED_TABLE', label: 'Featured table', icon: 'grid', description: 'One table full screen: seats, stacks, board, pot and showdowns (pick the table below, or let Johnny choose).' },
   { id: 'LEADERBOARD', label: 'Leaderboard', icon: 'award', description: 'Current stack ranking (clearly labelled as live, not a result).' },
   { id: 'FINAL_TABLE', label: 'Final table', icon: 'crown', description: 'The final table seats, stacks and the action.' },
   { id: 'ANNOUNCEMENT', label: 'Announcement', icon: 'message', description: 'The latest big-screen announcement, full screen.' },
@@ -45,9 +47,10 @@ export function sceneBlocked(scene: DisplayScene, status: TournamentStatus | nul
   return null;
 }
 
-/** Public URL of the broadcast display for this tournament (served by the game server under /display/). */
-export function displayUrl(origin: string, tournamentId: string): string {
-  return `${origin.replace(/\/+$/, '')}/display/?t=${encodeURIComponent(tournamentId)}`;
+/** Public URL of the broadcast display for this tournament (served by the game server under /display/). The join code lets an unattended screen load the leaderboard and prizes. */
+export function displayUrl(origin: string, tournamentId: string, joinCode?: string | null): string {
+  const code = joinCode ? `&code=${encodeURIComponent(joinCode)}` : '';
+  return `${origin.replace(/\/+$/, '')}/display/?t=${encodeURIComponent(tournamentId)}${code}`;
 }
 
 // ---------------------------------------------------------------- template context

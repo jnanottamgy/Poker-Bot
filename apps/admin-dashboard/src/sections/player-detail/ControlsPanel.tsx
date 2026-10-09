@@ -43,6 +43,7 @@ export function ControlsPanel({ p, live, tournamentStatus, bigBlind, controls, o
     disqualify: usePermission('PLAYER_DISQUALIFY'),
     adjust: usePermission('STACK_ADJUST'),
     announce: usePermission('ANNOUNCE'),
+    reenter: usePermission('PLAYER_APPROVE_REGISTRATION'),
   };
   const playing = tournamentStatus !== null && PLAYING.has(tournamentStatus);
   const seated = (p.status === 'SEATED' || p.status === 'SUSPENDED') && p.tableId !== null;
@@ -117,6 +118,15 @@ export function ControlsPanel({ p, live, tournamentStatus, bigBlind, controls, o
               Adjust stack…
             </Button>
             {adjustWhy ? <Why>{adjustWhy}</Why> : live?.handInProgress ? <Why>A hand is in progress: the change applies only between hands.</Why> : null}
+          </ControlCard>
+        )}
+
+        {can.reenter && p.status === 'ELIMINATED' && (
+          <ControlCard title="Re-entry" icon="refresh" state="Eliminated" description="Buy back in with a fresh stack while re-entry is open (level 1).">
+            <Button size="sm" icon="refresh" disabled={!playing} onClick={() => void controls.reenter()}>
+              Re-enter player…
+            </Button>
+            {!playing && <Why>Re-entry is only possible while the tournament is running.</Why>}
           </ControlCard>
         )}
 

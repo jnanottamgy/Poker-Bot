@@ -76,6 +76,24 @@ export function usePlayerControls(p: PlayerDetailDto | undefined, tournamentId: 
           invalidate,
         }),
 
+      reenter: () =>
+        danger({
+          level: 1,
+          endpoint: 'playerReenter',
+          title: `Re-enter ${name}`,
+          summary: 'A new entry with a fresh starting stack; Johnny seats the player at a table with a free seat.',
+          consequences: [
+            'Allowed only while re-entry is open (level limit, entries per player, before the final table) — the server checks every rule',
+            'Adds one entry to the field and the prize pool counters',
+            'Written to the audit log',
+          ],
+          reason: 'optional',
+          confirmLabel: 'Re-enter player',
+          run: ({ reason }) => api.players.reenter(id, reason ? { reason } : {}),
+          success: `${name} re-entered`,
+          invalidate,
+        }),
+
       restore: () =>
         danger({
           level: 2,

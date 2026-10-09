@@ -214,6 +214,9 @@ function TableDetail({ tableId }: { tableId: string }) {
               <Button size="sm" icon="clock" disabled={acting === null || view.frozen} title={acting === null ? 'Nobody is acting right now' : view.frozen ? 'Unfreeze first' : undefined} onClick={() => void controls.forceTimeout()}>
                 Force timeout{actingModel ? ` · ${actingModel.name}` : ''}
               </Button>
+              <Button size="sm" icon="plus" disabled={acting === null || view.frozen} title={acting === null ? 'Nobody is acting right now' : view.frozen ? 'Unfreeze first' : 'Give the acting player 30 more seconds'} onClick={() => void controls.addTime()}>
+                +30 s
+              </Button>
             </div>
           )}
           {(canMove || canAdjust) && (

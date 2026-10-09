@@ -24,6 +24,8 @@ export interface AdjustRequest {
 
 /** Message length the server accepts for announcements. */
 export const MESSAGE_MAX_LENGTH = 280;
+/** Extra decision time granted by the table's "add time" control. */
+export const ADD_TIME_MS = 30_000;
 
 /**
  * Every table control of §2.6 with its danger level (docs/API.md), copy,
@@ -40,6 +42,8 @@ export function useTableControls(tournamentId: string, tableId: string, view: Ad
     const name = `table ${n}`;
     const acting = view?.hand?.actingSeat ?? null;
     const actingName = acting !== null ? (view?.seats[acting]?.displayName ?? seatLabel(acting)) : null;
+    // The turn the operator is looking at: a timeout confirmed after it moved on is refused by the table.
+    const turnVersion = view?.hand?.turnVersion ?? null;
 
     return {
       hold: () =>
@@ -102,14 +106,27 @@ export function useTableControls(tournamentId: string, tableId: string, view: Ad
           summary: `${actingName ?? 'The acting player'}${acting !== null ? ` (${seatLabel(acting)})` : ''} is timed out now: the server checks when possible, otherwise folds — exactly as if their timer expired.`,
           consequences: [
             'Counts as a timeout for the away rule (consecutive timeouts)',
-            'Applies to whoever is acting when the server receives it — if the turn moves on before you confirm, check the seat again',
+            'Only this turn: if it moved on before you confirm, the server refuses and nobody else is timed out',
             'Written to the audit log with your reason',
           ],
           reason: 'required',
           tone: 'danger',
           confirmLabel: 'Force timeout',
-          run: ({ reason }) => api.tables.forceTimeout(tableId, { reason }),
+          run: ({ reason }) => api.tables.forceTimeout(tableId, { reason, ...(turnVersion !== null ? { turnVersion } : {}) }),
           success: 'Timeout applied',
+          invalidate,
+        }),
+      addTime: (ms = ADD_TIME_MS) =>
+        danger({
+          level: 1,
+          endpoint: 'tableAddTime',
+          title: `Give ${actingName ?? 'the acting player'} ${Math.round(ms / 1000)} more seconds`,
+          summary: `The current decision's deadline moves by ${Math.round(ms / 1000)} s (e.g. a dispute or a connection problem at the table).`,
+          consequences: ['Only the decision in progress gets the extra time', 'Written to the audit log'],
+          reason: 'optional',
+          confirmLabel: 'Add time',
+          run: ({ reason }) => api.tables.addTime(tableId, { ms, ...(reason ? { reason } : {}) }),
+          success: 'Time added',
           invalidate,
         }),
       breakTable: () =>

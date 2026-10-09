@@ -133,7 +133,7 @@ export default function BroadcastSection() {
           <CommentaryPanel events={tournamentEvents} tournamentName={overview.name} canSend={canAnnounce} onUse={onUse} />
         </div>
         <div className="acr-broadcast-col">
-          <DisplayControl tournamentId={tournamentId} status={status} canControl={canAnnounce} ctx={ctx} applied={applied} onApplied={setApplied} now={now} />
+          <DisplayControl tournamentId={tournamentId} joinCode={overview?.joinCode ?? null} status={status} canControl={canAnnounce} ctx={ctx} applied={applied} onApplied={setApplied} now={now} />
           <AnnouncementLog tournamentId={tournamentId} sent={sent} events={tournamentEvents} />
         </div>
       </div>
