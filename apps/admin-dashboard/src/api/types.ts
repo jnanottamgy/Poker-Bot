@@ -259,8 +259,11 @@ export interface AnnounceRequest extends ReasonBody {
   targetId?: string | null;
 }
 
-/** Server-validated (services/game-server/src/http/routes/admin-tournaments.ts DISPLAY_SCENES). */
-export type DisplayScene = 'OVERVIEW' | 'LEADERBOARD' | 'FINAL_TABLE' | 'ANNOUNCEMENT' | 'CHAMPION' | 'FEATURED_TABLE';
+/**
+ * Server-validated (services/game-server/src/http/routes/admin-tournaments.ts DISPLAY_SCENES).
+ * AUTO returns the big screen to its automatic scene rotation.
+ */
+export type DisplayScene = 'AUTO' | 'OVERVIEW' | 'LEADERBOARD' | 'FINAL_TABLE' | 'ANNOUNCEMENT' | 'CHAMPION' | 'FEATURED_TABLE';
 
 export interface DisplayRequest {
   scene: DisplayScene;

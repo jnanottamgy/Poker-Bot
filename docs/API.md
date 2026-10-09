@@ -147,7 +147,7 @@ DTO file does not name are typed in `apps/admin-dashboard/src/api/types.ts`):
 | Method | Path | Permission | Level |
 | --- | --- | --- | --- |
 | POST | `/api/admin/tournaments/:id/announce` `{ text, scope: ALL\|TABLE\|PLAYER\|DISPLAY, targetId? }` | ANNOUNCE | 1 |
-| POST | `/api/admin/tournaments/:id/display` `{ scene: OVERVIEW\|LEADERBOARD\|FINAL_TABLE\|ANNOUNCEMENT\|CHAMPION\|FEATURED_TABLE, featuredTableId? }` | ANNOUNCE | 0 |
+| POST | `/api/admin/tournaments/:id/display` `{ scene: AUTO\|OVERVIEW\|LEADERBOARD\|FINAL_TABLE\|ANNOUNCEMENT\|CHAMPION\|FEATURED_TABLE, featuredTableId? }` (`AUTO`: back to automatic rotation) | ANNOUNCE | 0 |
 | GET | `/api/admin/alerts?tournamentId&open&limit` → `{ alerts }` | METRICS_VIEW | 0 |
 | POST | `/api/admin/alerts/:id/ack` (→ `{ alert }`) · `/resolve` | ALERTS_MANAGE | 1 |
 | GET | `/api/admin/audit?tournamentId&adminId&action&target&beforeSeq&limit` · `/audit.csv` | AUDIT_VIEW | 0 |

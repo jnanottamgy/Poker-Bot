@@ -61,3 +61,35 @@ export class PassiveBot {
     this.send({ t: 'action', actionId: randomUUID(), tableId: view.tableId, type: passiveAction(view.you.legal), tableStateVersion: view.hand?.turnVersion ?? 0 });
   }
 }
+
+/** A broadcast screen (DISPLAY audience) that records the admin scene switches it receives. */
+export class DisplayWatcher {
+  private ws: WebSocket | null = null;
+  readonly scenes: Array<{ scene: string; tableId: string | null }> = [];
+
+  constructor(
+    readonly http: Http,
+    readonly wsUrl: string,
+    readonly tournamentId: string,
+  ) {}
+
+  connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(this.wsUrl, { headers: { cookie: this.http.jar.header(), origin: this.http.origin } });
+      this.ws = ws;
+      ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', v: 1, audience: 'DISPLAY', tournamentId: this.tournamentId, resume: null } satisfies ClientMessage)));
+      ws.on('message', (data) => {
+        const m = JSON.parse(String(data)) as { t: string; scene?: string; tableId?: string | null; code?: string; message?: string };
+        if (m.t === 'snapshot') resolve();
+        else if (m.t === 'display_scene' && typeof m.scene === 'string') this.scenes.push({ scene: m.scene, tableId: m.tableId ?? null });
+        else if (m.t === 'error') reject(new Error(`${m.code}: ${m.message}`));
+      });
+      ws.on('close', () => reject(new Error('display socket closed before the snapshot')));
+      ws.on('error', reject);
+    });
+  }
+
+  close(): void {
+    this.ws?.close();
+  }
+}

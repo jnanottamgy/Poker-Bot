@@ -37,8 +37,8 @@ const LIVE: readonly TournamentStatus[] = ['STARTING', 'RUNNING', 'BREAK', 'PAUS
 /** Audit action of a discarded draft (DELETE); such tournaments are left out of the admin list. */
 const TOURNAMENT_DELETED = 'TOURNAMENT_DELETED';
 
-/** Scenes of the broadcast display (docs/API.md `POST …/display`). */
-export const DISPLAY_SCENES: readonly string[] = ['OVERVIEW', 'LEADERBOARD', 'FINAL_TABLE', 'ANNOUNCEMENT', 'CHAMPION', 'FEATURED_TABLE'];
+/** Scenes of the broadcast display (docs/API.md `POST …/display`); AUTO hands the big screen back to its own rotation. */
+export const DISPLAY_SCENES: readonly string[] = ['AUTO', 'OVERVIEW', 'LEADERBOARD', 'FINAL_TABLE', 'ANNOUNCEMENT', 'CHAMPION', 'FEATURED_TABLE'];
 
 export function tournamentListItem(t: TournamentRecord): TournamentListItemDto {
   return {

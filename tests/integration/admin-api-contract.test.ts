@@ -13,7 +13,7 @@ import type { JpbServer } from '../../services/game-server/src/server';
 import { createTestDatabase, TEST_DATABASE_URL } from '../../services/game-server/test/helpers/db';
 import { Http } from '../../services/game-server/test/helpers/client';
 import { fastConfig } from '../../services/game-server/test/helpers/game';
-import { PassiveBot } from './admin-api-bots';
+import { DisplayWatcher, PassiveBot } from './admin-api-bots';
 import * as S from './admin-api-shapes';
 import type { Spec } from './admin-api-shapes';
 
@@ -474,9 +474,20 @@ describe.skipIf(!TEST_DATABASE_URL)('admin app client ↔ real game server', () 
     ] as const) {
       S.check(`announce ${scope}`, await admin.api.broadcast.announce(id, { text: `Contract ${scope}`, scope, targetId, reason: REASON }), S.OK);
     }
+    // A big screen signed in with the admin session receives every scene switch, AUTO included.
+    const screen = new DisplayWatcher(admin.http, wsUrl, id);
+    await screen.connect();
     S.check('display', await admin.api.broadcast.display(id, { scene: 'LEADERBOARD', featuredTableId: null }), S.OK);
     const featured = (await admin.api.tables.list(id)).rows[0]!.tableId;
     S.check('display featured', await admin.api.broadcast.display(id, { scene: 'FEATURED_TABLE', featuredTableId: featured }), S.OK);
+    S.check('display auto', await admin.api.broadcast.display(id, { scene: 'AUTO', featuredTableId: null }), S.OK);
+    await waitFor('scenes delivered to the screen', async () => screen.scenes.length >= 3, 10_000);
+    expect(screen.scenes).toEqual([
+      { scene: 'LEADERBOARD', tableId: null },
+      { scene: 'FEATURED_TABLE', tableId: featured },
+      { scene: 'AUTO', tableId: null },
+    ]);
+    screen.close();
     const badScene = await apiError(admin.api.broadcast.display(id, { scene: 'FIREWORKS' as 'OVERVIEW' }));
     expect([badScene.status, badScene.code]).toEqual([400, 'INVALID_INPUT']);
 

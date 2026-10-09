@@ -34,7 +34,7 @@ export type HandlerResult = unknown | { __text: string; contentType: string };
 export type Handler = (ctx: HandlerCtx) => HandlerResult;
 
 const text = (body: string, contentType: string) => ({ __text: body, contentType });
-const DISPLAY_SCENES: readonly string[] = ['OVERVIEW', 'LEADERBOARD', 'FINAL_TABLE', 'ANNOUNCEMENT', 'CHAMPION', 'FEATURED_TABLE'];
+const DISPLAY_SCENES: readonly string[] = ['AUTO', 'OVERVIEW', 'LEADERBOARD', 'FINAL_TABLE', 'ANNOUNCEMENT', 'CHAMPION', 'FEATURED_TABLE'];
 const ok = { ok: true };
 
 function num(q: URLSearchParams, key: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
