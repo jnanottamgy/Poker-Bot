@@ -47,6 +47,25 @@ burst then 2/s, admin reads 120 burst then 20/s, public reads 60 burst then
 
 Auth: `POST /api/admin/auth/login` · `POST /api/admin/auth/logout` · `GET /api/admin/auth/me`.
 
+Response conventions (DTOs in `packages/shared-types/src/api.ts`; envelopes the
+DTO file does not name are typed in `apps/admin-dashboard/src/api/types.ts`):
+
+- Commands answer `{ "ok": true }` unless a result is listed below.
+- Paginated lists answer `{ rows, total, offset, limit }` (`Paginated<T>`);
+  other lists are wrapped in a named key (`{ tournaments }`, `{ alerts }`,
+  `{ entries, nextBeforeSeq }`, `{ users, rolePermissions }`, `{ sessions }`,
+  `{ events, nextAfter }`, `{ points }`, `{ seats }`).
+- Every level-1 command accepts an optional `reason` (written to the audit log);
+  "reason" in a row means it is required.
+- Validation errors: `400 INVALID_INPUT` / `INVALID_CONFIG` / `INVALID_FIELDS`
+  (`details` lists the issues), `400 REASON_REQUIRED`, `400 CONFIRMATION_REQUIRED`
+  (`details.confirmWord`); `401 UNAUTHORIZED`; `403 FORBIDDEN` (permission,
+  tournament scope or CSRF); `404 NOT_FOUND`; `409 <CODE>` when the tournament
+  director refuses in the current state (e.g. `ILLEGAL_STATE`,
+  `HAND_IN_PROGRESS`, `NOT_ELIMINATED`); `429 RATE_LIMITED`.
+- CSV exports are `text/csv; charset=utf-8` attachments; the QR is
+  `image/svg+xml`.
+
 ### Tournaments & lifecycle
 
 | Method | Path | Permission | Level |
@@ -59,7 +78,7 @@ Auth: `POST /api/admin/auth/login` · `POST /api/admin/auth/logout` · `GET /api
 | POST | `/api/admin/tournaments/:id/clone` | TOURNAMENT_CREATE | 0 |
 | DELETE | `/api/admin/tournaments/:id` (DRAFT only) | TOURNAMENT_CREATE | 1 |
 | POST | `/api/admin/tournaments/:id/registration/open` · `/close` · `/reopen` | TOURNAMENT_LIFECYCLE | 1 |
-| POST | `/api/admin/tournaments/:id/start` `{ adminEntropy? }` | TOURNAMENT_LIFECYCLE | 1 |
+| POST | `/api/admin/tournaments/:id/start` `{ adminEntropy? }` → `{ ok, publicEntropy }` | TOURNAMENT_LIFECYCLE | 1 |
 | POST | `/api/admin/tournaments/:id/pause` (after current hands) · `/resume` | TOURNAMENT_PAUSE | 1 |
 | POST | `/api/admin/tournaments/:id/freeze` · `/unfreeze` (emergency) | TOURNAMENT_FREEZE | 2 `FREEZE` |
 | POST | `/api/admin/tournaments/:id/cancel` | TOURNAMENT_CANCEL | 2 `CANCEL` |
@@ -78,16 +97,18 @@ Auth: `POST /api/admin/auth/login` · `POST /api/admin/auth/logout` · `GET /api
 
 | Method | Path | Permission | Level |
 | --- | --- | --- | --- |
-| GET | `/api/admin/tournaments/:id/tables?status&minPlayers&maxPlayers&stalled&offset&limit` | PLAYER_VIEW | 0 |
+| GET | `/api/admin/tournaments/:id/tables?status&minPlayers&maxPlayers&stalled&q&sort=number\|players\|stall\|chips&offset&limit` (`q`: table number prefix) | PLAYER_VIEW | 0 |
 | GET | `/api/admin/tables/:tableId` (admin view + internals) | PLAYER_VIEW | 0 |
 | GET | `/api/admin/tables/:tableId/events?after&limit` | HAND_HISTORY_VIEW | 0 |
 | POST | `/api/admin/tables/:tableId/hold` · `/release` | TABLE_CONTROL | 1 |
 | POST | `/api/admin/tables/:tableId/freeze` · `/unfreeze` | TABLE_CONTROL | 1 |
-| POST | `/api/admin/tables/:tableId/force-timeout` `{ reason }` | TABLE_CONTROL | 1 |
+| POST | `/api/admin/tables/:tableId/force-timeout` `{ reason, turnVersion? }` (with `turnVersion`, a turn that moved on is never timed out) | TABLE_CONTROL | 1 |
+| POST | `/api/admin/tables/:tableId/add-time` `{ ms? }` (extra time for the current actor, 1–600 s, default 30 s) | TABLE_CONTROL | 1 |
+| GET | `/api/admin/tables/:tableId/seat-scores?playerId` → `{ seats: SeatScoreDto[] }` (free seats scored for a move) | PLAYER_MOVE | 0 |
 | POST | `/api/admin/tables/:tableId/break` | TABLE_CONTROL | 2 `BREAK` |
-| POST | `/api/admin/tables/:tableId/reveal-hole-cards` | VIEW_HOLE_CARDS | 2 `REVEAL` |
-| POST | `/api/admin/tournaments/:id/rebalance` | TABLE_CONTROL | 1 |
-| POST | `/api/admin/tournaments/:id/integrity-check` | TABLE_CONTROL | 0 |
+| POST | `/api/admin/tables/:tableId/reveal-hole-cards` → `{ holeCards }` | VIEW_HOLE_CARDS | 2 `REVEAL` |
+| POST | `/api/admin/tournaments/:id/rebalance` → `{ ok, movesPlanned }` (players ordered to another table) | TABLE_CONTROL | 1 |
+| POST | `/api/admin/tournaments/:id/integrity-check` → `{ ok, checkedTables, checkedAt, violations, chipConservation }` | TABLE_CONTROL | 0 |
 
 ### Players & registration
 
@@ -100,43 +121,44 @@ Auth: `POST /api/admin/auth/login` · `POST /api/admin/auth/logout` · `GET /api
 | POST | `/api/admin/players/:playerId/suspend` · `/restore` | PLAYER_SUSPEND | 1 / 2 `RESTORE` |
 | POST | `/api/admin/players/:playerId/disqualify` | PLAYER_DISQUALIFY | 2 `DISQUALIFY` |
 | POST | `/api/admin/players/:playerId/adjust-stack` `{ newStack }` | STACK_ADJUST | 2 `ADJUST` |
-| POST | `/api/admin/players/:playerId/revoke-sessions` | PLAYER_SUSPEND | 2 `REVOKE` |
-| POST | `/api/admin/players/:playerId/rejoin-code` (new code + QR) | PLAYER_SUSPEND | 1 |
+| POST | `/api/admin/players/:playerId/revoke-sessions` → `{ ok, revoked }` | PLAYER_SUSPEND | 2 `REVOKE` |
+| POST | `/api/admin/players/:playerId/rejoin-code` (new code) → `{ publicId, rejoinCode, rejoinUrl }`; `rejoinUrl` = `{PUBLIC_BASE_URL}/join/{JOINCODE}#rejoin={publicId}:{rejoinCode}` (for the QR) | PLAYER_SUSPEND | 1 |
 | POST | `/api/admin/players/:playerId/notice` `{ text }` | ANNOUNCE | 1 |
 | POST | `/api/admin/players/:playerId/approve` · `/reject` | PLAYER_APPROVE_REGISTRATION | 1 |
-| POST | `/api/admin/tournaments/:id/registrations/manual` `{ fields }` | PLAYER_APPROVE_REGISTRATION | 1 |
+| POST | `/api/admin/players/:playerId/reenter` (staff re-entry of an eliminated player) → `{ ok, entryId, entryNumber }` | PLAYER_APPROVE_REGISTRATION | 1 |
+| POST | `/api/admin/tournaments/:id/registrations/manual` `{ fields }` → `{ player, rejoinCode, rejoinUrl }` | PLAYER_APPROVE_REGISTRATION | 1 |
 | GET | `/api/admin/tournaments/:id/qr.svg?size` | PLAYER_VIEW | 0 |
 
 ### Hands, fairness, standings, payouts
 
 | Method | Path | Permission | Level |
 | --- | --- | --- | --- |
-| GET | `/api/admin/tournaments/:id/hands?tableId&playerId&minPot&showdown&offset&limit` | HAND_HISTORY_VIEW | 0 |
+| GET | `/api/admin/tournaments/:id/hands?tableId&playerId&handNumber&minPot&showdown&allIn&offset&limit` | HAND_HISTORY_VIEW | 0 |
 | GET | `/api/admin/hands/:handId` (full history incl. hole cards) | HAND_HISTORY_VIEW | 0 |
 | GET | `/api/admin/hands/:handId/fairness` | FAIRNESS_VIEW | 0 |
 | GET | `/api/admin/tournaments/:id/fairness` · `/fairness/bundle?fromHand&toHand` | FAIRNESS_VIEW | 0 |
-| POST | `/api/admin/tournaments/:id/fairness/reveal-seed` (COMPLETED/CANCELLED only) | FAIRNESS_REVEAL_SEED | 2 `REVEAL` |
+| POST | `/api/admin/tournaments/:id/fairness/reveal-seed` (COMPLETED/CANCELLED only) → `{ serverSeed }` | FAIRNESS_REVEAL_SEED | 2 `REVEAL` |
 | GET | `/api/admin/tournaments/:id/standings?mode=stack\|finish&offset&limit` · `.csv` | PLAYER_VIEW | 0 |
 | GET | `/api/admin/tournaments/:id/payouts` · `/payouts.csv` | PAYOUT_VIEW | 0 |
-| PATCH | `/api/admin/entries/:entryId/payment` `{ status, reference, note }` | PAYOUT_MANAGE | 1 |
+| PATCH | `/api/admin/entries/:entryId/payment` `{ status, reference, note }` → `{ row: PayoutRowDto }` | PAYOUT_MANAGE | 1 |
 
 ### Broadcast, alerts, audit, system, reports, users, demo
 
 | Method | Path | Permission | Level |
 | --- | --- | --- | --- |
 | POST | `/api/admin/tournaments/:id/announce` `{ text, scope: ALL\|TABLE\|PLAYER\|DISPLAY, targetId? }` | ANNOUNCE | 1 |
-| POST | `/api/admin/tournaments/:id/display` `{ scene, featuredTableId? }` | ANNOUNCE | 0 |
-| GET | `/api/admin/alerts?tournamentId&open` | METRICS_VIEW | 0 |
-| POST | `/api/admin/alerts/:id/ack` · `/resolve` | ALERTS_MANAGE | 1 |
+| POST | `/api/admin/tournaments/:id/display` `{ scene: OVERVIEW\|LEADERBOARD\|FINAL_TABLE\|ANNOUNCEMENT\|CHAMPION\|FEATURED_TABLE, featuredTableId? }` | ANNOUNCE | 0 |
+| GET | `/api/admin/alerts?tournamentId&open&limit` → `{ alerts }` | METRICS_VIEW | 0 |
+| POST | `/api/admin/alerts/:id/ack` (→ `{ alert }`) · `/resolve` | ALERTS_MANAGE | 1 |
 | GET | `/api/admin/audit?tournamentId&adminId&action&target&beforeSeq&limit` · `/audit.csv` | AUDIT_VIEW | 0 |
 | GET | `/api/admin/audit/verify` | AUDIT_VIEW | 0 |
 | GET | `/api/admin/system` (nodes, connections, latency, errors) | METRICS_VIEW | 0 |
 | GET | `/api/admin/tournaments/:id/metrics/live` (time series for charts) | METRICS_VIEW | 0 |
 | GET | `/api/admin/tournaments/:id/report` · `/report.csv` | EXPORT_DATA | 0 |
-| GET/POST | `/api/admin/users` | ADMIN_USERS_MANAGE | 1 |
-| PATCH | `/api/admin/users/:id` · POST `/api/admin/users/:id/reset-password` | ADMIN_USERS_MANAGE | 2 `USER` |
-| GET | `/api/admin/sessions` · POST `/api/admin/sessions/:id/revoke` | ADMIN_USERS_MANAGE | 1 |
-| POST | `/api/admin/demo` `{ players, strategyMix, speedMode }` · GET `/api/admin/demo/:id` · POST `/api/admin/demo/:id/stop` | SIMULATION_RUN | 0 |
+| GET/POST | `/api/admin/users` (GET → `{ users, rolePermissions }`; POST `{ username, displayName, role, password, tournamentScope }` → `{ user }`) | ADMIN_USERS_MANAGE | 0 / 1 |
+| PATCH | `/api/admin/users/:id` (→ `{ user }`) · POST `/api/admin/users/:id/reset-password` `{ password }` | ADMIN_USERS_MANAGE | 2 `USER` |
+| GET | `/api/admin/sessions` (→ `{ sessions }`) · POST `/api/admin/sessions/:id/revoke` `{ reason }` | ADMIN_USERS_MANAGE | 0 / 1 |
+| POST | `/api/admin/demo` `{ players, strategyMix, speedMode, name? }` · GET `/api/admin/demo/:id` · POST `/api/admin/demo/:id/stop` (each → `DemoStatusDto`) | SIMULATION_RUN | 0 |
 
 ## WebSocket `/ws`
 

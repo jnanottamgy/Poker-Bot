@@ -1,4 +1,4 @@
-import { api } from '@jpb/client-sdk';
+import { ApiError, api } from '@jpb/client-sdk';
 import type {
   AdminMeDto,
   DemoRequest,
@@ -11,7 +11,6 @@ import type {
   LeaderboardDto,
   LiveMetricsDto,
   Paginated,
-  PayoutRowDto,
   PayoutsDto,
   PlayerDetailDto,
   PlayerListItemDto,
@@ -43,6 +42,7 @@ import type {
   CreateUserRequest,
   DangerBody,
   DisplayRequest,
+  ForceTimeoutRequest,
   HandsQuery,
   HoleCardsRevealResponse,
   IntegrityCheckResponse,
@@ -53,16 +53,24 @@ import type {
   MovePlayerRequest,
   OkResponse,
   PaymentUpdateRequest,
+  PaymentUpdateResponse,
   PlayersQuery,
   PutConfigRequest,
   ReasonBody,
   RebalanceResponse,
+  ReentryResponse,
   RejoinCodeResponse,
   ResetPasswordRequest,
   RevealSeedResponse,
+  RevokeSessionRequest,
+  RevokeSessionsResponse,
   RunningConfigRequest,
+  SeatScoresResponse,
   SessionsResponse,
   StandingsQuery,
+  StartRequest,
+  StartResponse,
+  TableAddTimeRequest,
   TableEventsResponse,
   TablesQuery,
   TournamentCreatedResponse,
@@ -115,12 +123,22 @@ export function createAdminApi(opts: AdminApiOptions = {}) {
     return baseUrl + buildPath(ENDPOINTS[key].path, params, query);
   }
 
-  /** GET a non-JSON resource (CSV / SVG) as text. */
+  /** GET a non-JSON resource (CSV / SVG) as text. Failures are `ApiError`s like every other call. */
   async function text(key: EndpointKey, params?: Params, query?: Query, signal?: AbortSignal): Promise<string> {
     const f = opts.fetchImpl ?? fetch;
-    const res = await f(url(key, params, query), { method: 'GET', credentials: 'same-origin', signal });
-    if (!res.ok) throw new Error(`Download failed (${res.status})`);
-    return res.text();
+    let res: Response;
+    try {
+      res = await f(url(key, params, query), { method: 'GET', credentials: 'same-origin', signal });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      throw new ApiError(0, 'NETWORK', 'Unable to connect. Check your connection and try again.');
+    }
+    const body = await res.text();
+    if (!res.ok) {
+      const error = parseErrorBody(body);
+      throw new ApiError(res.status, error?.code ?? 'ERROR', error?.message ?? `Download failed (${res.status}).`, error?.details ?? null);
+    }
+    return body;
   }
 
   const t = (id: string): Params => ({ id });
@@ -143,14 +161,14 @@ export function createAdminApi(opts: AdminApiOptions = {}) {
       putConfig: (id: string, body: PutConfigRequest) => call<OkResponse>('tournamentPutConfig', { params: t(id), body }),
       patchRunningConfig: (id: string, body: RunningConfigRequest) => call<OkResponse>('tournamentPatchRunningConfig', { params: t(id), body }),
       clone: (id: string) => call<TournamentCreatedResponse>('tournamentClone', { params: t(id), body: {} }),
-      remove: (id: string) => call<OkResponse>('tournamentDelete', { params: t(id) }),
+      remove: (id: string, body?: ReasonBody) => call<OkResponse>('tournamentDelete', { params: t(id), ...(body ? { body } : {}) }),
     },
 
     lifecycle: {
       openRegistration: (id: string, body: ReasonBody = {}) => call<OkResponse>('registrationOpen', { params: t(id), body }),
       closeRegistration: (id: string, body: ReasonBody = {}) => call<OkResponse>('registrationClose', { params: t(id), body }),
       reopenRegistration: (id: string, body: ReasonBody = {}) => call<OkResponse>('registrationReopen', { params: t(id), body }),
-      start: (id: string, body: ReasonBody & { adminEntropy?: string } = {}) => call<OkResponse>('tournamentStart', { params: t(id), body }),
+      start: (id: string, body: StartRequest = {}) => call<StartResponse>('tournamentStart', { params: t(id), body }),
       pause: (id: string, body: ReasonBody = {}) => call<OkResponse>('tournamentPause', { params: t(id), body }),
       resume: (id: string, body: ReasonBody = {}) => call<OkResponse>('tournamentResume', { params: t(id), body }),
       freeze: (id: string, body: DangerBody<'FREEZE'>) => call<OkResponse>('tournamentFreeze', { params: t(id), body }),
@@ -181,7 +199,9 @@ export function createAdminApi(opts: AdminApiOptions = {}) {
       release: (tableId: string, body: ReasonBody = {}) => call<OkResponse>('tableRelease', { params: { tableId }, body }),
       freeze: (tableId: string, body: ReasonBody = {}) => call<OkResponse>('tableFreeze', { params: { tableId }, body }),
       unfreeze: (tableId: string, body: ReasonBody = {}) => call<OkResponse>('tableUnfreeze', { params: { tableId }, body }),
-      forceTimeout: (tableId: string, body: { reason: string }) => call<OkResponse>('tableForceTimeout', { params: { tableId }, body }),
+      forceTimeout: (tableId: string, body: ForceTimeoutRequest) => call<OkResponse>('tableForceTimeout', { params: { tableId }, body }),
+      addTime: (tableId: string, body: TableAddTimeRequest = {}) => call<OkResponse>('tableAddTime', { params: { tableId }, body }),
+      seatScores: (tableId: string, playerId: string, signal?: AbortSignal) => call<SeatScoresResponse>('tableSeatScores', { params: { tableId }, query: { playerId }, signal }),
       breakTable: (tableId: string, body: DangerBody<'BREAK'>) => call<OkResponse>('tableBreak', { params: { tableId }, body }),
       revealHoleCards: (tableId: string, body: DangerBody<'REVEAL'>) => call<HoleCardsRevealResponse>('tableRevealHoleCards', { params: { tableId }, body }),
       rebalance: (id: string, body: ReasonBody = {}) => call<RebalanceResponse>('tournamentRebalance', { params: t(id), body }),
@@ -202,11 +222,12 @@ export function createAdminApi(opts: AdminApiOptions = {}) {
       restore: (playerId: string, body: DangerBody<'RESTORE'>) => call<OkResponse>('playerRestore', { params: { playerId }, body }),
       disqualify: (playerId: string, body: DangerBody<'DISQUALIFY'>) => call<OkResponse>('playerDisqualify', { params: { playerId }, body }),
       adjustStack: (playerId: string, body: AdjustStackRequest) => call<OkResponse>('playerAdjustStack', { params: { playerId }, body }),
-      revokeSessions: (playerId: string, body: DangerBody<'REVOKE'>) => call<OkResponse>('playerRevokeSessions', { params: { playerId }, body }),
+      revokeSessions: (playerId: string, body: DangerBody<'REVOKE'>) => call<RevokeSessionsResponse>('playerRevokeSessions', { params: { playerId }, body }),
       newRejoinCode: (playerId: string, body: ReasonBody = {}) => call<RejoinCodeResponse>('playerRejoinCode', { params: { playerId }, body }),
       notice: (playerId: string, body: { text: string }) => call<OkResponse>('playerNotice', { params: { playerId }, body }),
       approve: (playerId: string, body: ReasonBody = {}) => call<OkResponse>('playerApprove', { params: { playerId }, body }),
       reject: (playerId: string, body: ReasonBody = {}) => call<OkResponse>('playerReject', { params: { playerId }, body }),
+      reenter: (playerId: string, body: ReasonBody = {}) => call<ReentryResponse>('playerReenter', { params: { playerId }, body }),
     },
 
     registration: {
@@ -242,7 +263,7 @@ export function createAdminApi(opts: AdminApiOptions = {}) {
     payouts: {
       get: (id: string, signal?: AbortSignal) => call<PayoutsDto>('payouts', { params: t(id), signal }),
       csvUrl: (id: string) => url('payoutsCsv', t(id)),
-      updatePayment: (entryId: string, body: PaymentUpdateRequest) => call<{ row: PayoutRowDto }>('entryPayment', { params: { entryId }, body }),
+      updatePayment: (entryId: string, body: PaymentUpdateRequest) => call<PaymentUpdateResponse>('entryPayment', { params: { entryId }, body }),
     },
 
     broadcast: {
@@ -283,7 +304,7 @@ export function createAdminApi(opts: AdminApiOptions = {}) {
       update: (userId: string, body: UpdateUserRequest) => call<UserResponse>('userUpdate', { params: { id: userId }, body }),
       resetPassword: (userId: string, body: ResetPasswordRequest) => call<OkResponse>('userResetPassword', { params: { id: userId }, body }),
       sessions: (signal?: AbortSignal) => call<SessionsResponse>('sessionsList', { signal }),
-      revokeSession: (sessionId: string, body: { reason: string }) => call<OkResponse>('sessionRevoke', { params: { id: sessionId }, body }),
+      revokeSession: (sessionId: string, body: RevokeSessionRequest) => call<OkResponse>('sessionRevoke', { params: { id: sessionId }, body }),
     },
 
     demo: {
@@ -306,3 +327,11 @@ export function createAdminApi(opts: AdminApiOptions = {}) {
 }
 
 export type AdminApi = ReturnType<typeof createAdminApi>;
+
+function parseErrorBody(text: string): { code?: string; message?: string; details?: unknown } | null {
+  try {
+    return (JSON.parse(text) as { error?: { code?: string; message?: string; details?: unknown } } | null)?.error ?? null;
+  } catch {
+    return null;
+  }
+}

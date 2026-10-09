@@ -17,11 +17,14 @@ import { TournamentInfo } from './info/TournamentInfo';
 import { EventBanners } from './notices/EventBanners';
 import { FinalTableCinematic } from './notices/FinalTableCinematic';
 import { NoticeLayer } from './notices/NoticeLayer';
+import { StaffMessages } from './notices/StaffMessages';
+import { reentryOffer } from './reentry';
 import { BreakScreen } from './screens/BreakScreen';
 import { AnotherDeviceScreen, SessionReplacedScreen } from './screens/DeviceScreens';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { CompletedScreen, EliminatedScreen } from './screens/OutcomeScreens';
 import { PausedScreen } from './screens/PausedScreen';
+import { ReentryDialog } from './screens/ReentryDialog';
 import { SessionExpiredScreen } from './screens/SessionExpiredScreen';
 import { ConnectingScreen, MovingScreen, PendingScreen, RemovedScreen, SuspendedScreen } from './screens/StateScreens';
 import { SpectatorView } from './spectator/SpectatorView';
@@ -29,6 +32,7 @@ import { DesktopConsole } from './table/DesktopConsole';
 import { HandLog } from './table/HandLog';
 import { LiveTable } from './table/LiveTable';
 import { TableActions } from './table/TableActions';
+import { heroTurn } from './table/tableModel';
 import { useJpbClient } from './usePlayerClient';
 
 type Sheet = 'log' | 'info' | null;
@@ -46,6 +50,7 @@ export function PlayerGame({ me, onRejoined }: { me: PlayerMeDto; onRejoined: ()
   const [sheet, setSheet] = useState<Sheet>(null);
   const [sideTab, setSideTab] = useState<'log' | 'info'>('log');
   const [infoKey, setInfoKey] = useState(0);
+  const [reentering, setReentering] = useState(false);
   const wantTakeover = useRef(false);
   const joinInfo = useAsync((signal) => api.joinInfo(me.joinCode, signal), [me.joinCode]);
 
@@ -55,6 +60,10 @@ export function PlayerGame({ me, onRejoined }: { me: PlayerMeDto; onRejoined: ()
   const tournament = state.tournament;
   const currency = joinInfo.data?.prizes.currency ?? 'INR';
   const view = state.table && state.table.audience === 'PLAYER' ? (state.table as PlayerTableView) : null;
+  // Full-screen notices wait while the hero has a decision on the clock.
+  const deciding = screen === 'table' && live && heroTurn(view) !== null;
+  const offer = reentryOffer(self, tournament, joinInfo.data);
+  const onReenter = offer ? () => setReentering(true) : undefined;
 
   // A rejected session stops the reconnect loop; the screen offers rejoin.
   useEffect(() => {
@@ -109,13 +118,22 @@ export function PlayerGame({ me, onRejoined }: { me: PlayerMeDto; onRejoined: ()
       case 'moving':
         return <MovingScreen />;
       case 'lobby':
-        return self && tournament ? <LobbyScreen self={self} tournament={tournament} serverOffsetMs={state.serverOffsetMs} startTime={joinInfo.data?.startTime ?? null} onSettings={() => setSettingsOpen(true)} /> : null;
+        return self && tournament ? (
+          <LobbyScreen
+            self={self}
+            tournament={tournament}
+            serverOffsetMs={state.serverOffsetMs}
+            startTime={joinInfo.data?.startTime ?? null}
+            startingStack={joinInfo.data?.startingStack ?? null}
+            onSettings={() => setSettingsOpen(true)}
+          />
+        ) : null;
       case 'break':
         return self && tournament ? <BreakScreen self={self} tournament={tournament} serverOffsetMs={state.serverOffsetMs} message={breakMessage} /> : null;
       case 'paused':
         return self && tournament ? <PausedScreen self={self} tournament={tournament} frozen={!!view?.frozen} /> : null;
       case 'eliminated':
-        return self && tournament ? <EliminatedScreen self={self} tournament={tournament} currency={currency} onWatch={() => setSpectate(true)} onInfo={openInfo} /> : null;
+        return self && tournament ? <EliminatedScreen self={self} tournament={tournament} currency={currency} onWatch={() => setSpectate(true)} onInfo={openInfo} onReenter={onReenter} /> : null;
       case 'spectating':
         return <SpectatorView tournamentId={me.tournamentId} wide={desktop} onBack={() => setSpectate(false)} />;
       case 'completed':
@@ -138,6 +156,7 @@ export function PlayerGame({ me, onRejoined }: { me: PlayerMeDto; onRejoined: ()
   const banner = deviceScreen ? null : (
     <>
       <ConnectionLayer client={client} />
+      <StaffMessages client={client} />
       <EventBanners client={client} />
     </>
   );
@@ -185,8 +204,20 @@ export function PlayerGame({ me, onRejoined }: { me: PlayerMeDto; onRejoined: ()
       >
         {content}
       </GameFrame>
-      {!deviceScreen && <NoticeLayer client={client} currency={currency} onWatch={() => setSpectate(true)} onInfo={openInfo} />}
-      {!deviceScreen && <FinalTableCinematic client={client} />}
+      {!deviceScreen && <NoticeLayer client={client} currency={currency} onWatch={() => setSpectate(true)} onInfo={openInfo} onReenter={onReenter} deferred={deciding} />}
+      {!deviceScreen && <FinalTableCinematic client={client} deferred={deciding} />}
+      <ReentryDialog
+        open={reentering && offer !== null}
+        offer={offer}
+        startingStack={joinInfo.data?.startingStack ?? null}
+        onClose={() => setReentering(false)}
+        onReentered={() => {
+          setReentering(false);
+          setSpectate(false);
+          // The new entry arrives as self_update; ask for a snapshot so the screen follows at once.
+          client.requestSnapshot();
+        }}
+      />
       {!desktop && (
         <Modal open={sheet !== null} onClose={() => setSheet(null)} title={sheet === 'log' ? 'Hand log' : 'Tournament'} placement="right" size="md" className="pw-sheet">
           {sheet === 'log' ? log : sheet === 'info' ? info : null}

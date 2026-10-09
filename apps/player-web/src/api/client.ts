@@ -4,6 +4,7 @@ import type {
   LeaderboardDto,
   PlayerHistoryDto,
   PlayerMeDto,
+  PlayerSelfSummary,
   RegisterRequest,
   RegisterResponse,
   RejoinRequest,
@@ -13,6 +14,14 @@ import type {
 } from '@jpb/shared-types';
 
 export type LeaderboardMode = 'stack' | 'finish';
+
+/** POST /api/player/reenter (services/game-server/src/http/routes/reentry.ts). */
+export interface ReenterResponse {
+  ok: true;
+  entryId: string;
+  entryNumber: number;
+  self: PlayerSelfSummary | null;
+}
 
 /** Typed REST client for the player app (docs/API.md). */
 export interface PlayerApi {
@@ -24,6 +33,8 @@ export interface PlayerApi {
   fairness(joinCode: string, signal?: AbortSignal): Promise<TournamentFairnessDto>;
   me(signal?: AbortSignal): Promise<PlayerMeDto>;
   history(signal?: AbortSignal): Promise<PlayerHistoryDto>;
+  /** Eliminated player buys back in (server checks the re-entry rules). */
+  reenter(): Promise<ReenterResponse>;
   logout(): Promise<void>;
 }
 
@@ -49,6 +60,7 @@ export function createPlayerApi(opts: PlayerApiOptions = {}): PlayerApi {
     fairness: (joinCode, signal) => get(`${pub(joinCode)}/fairness`, signal),
     me: (signal) => get('/api/player/me', signal),
     history: (signal) => get('/api/player/history', signal),
+    reenter: () => post('/api/player/reenter', {}),
     logout: async () => {
       await post('/api/player/logout', {});
     },

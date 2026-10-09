@@ -65,13 +65,13 @@ const errorBody = (code: string, message: string, details: unknown = null) => JS
 function guard(server: MockServer, route: Route, params: Record<string, string>, body: Record<string, unknown>) {
   if (route.def.section !== 'Admin' || route.key === 'authLogin') return null;
   const admin = server.currentAdmin();
-  if (!admin) throw new MockHttpError(401, 'UNAUTHENTICATED', 'Please sign in.');
+  if (!admin) throw new MockHttpError(401, 'UNAUTHORIZED', 'Your session expired. Please sign in again.');
   const perms = server.permissionsOf(admin);
   if (route.def.permission && !perms.includes(route.def.permission)) {
     throw new MockHttpError(403, 'FORBIDDEN', `Your role (${admin.role.replace(/_/g, ' ').toLowerCase()}) does not include ${route.def.permission}.`);
   }
   if (route.def.path.startsWith('/api/admin/tournaments/:id') && admin.tournamentScope && !admin.tournamentScope.includes(params.id ?? '')) {
-    throw new MockHttpError(403, 'OUT_OF_SCOPE', 'You are not assigned to this tournament.');
+    throw new MockHttpError(403, 'FORBIDDEN', 'You do not have permission to do that.');
   }
   if (route.def.level === 2 && route.def.word) {
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';

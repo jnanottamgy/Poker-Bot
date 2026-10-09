@@ -53,7 +53,7 @@ export function RegistrationForm({ info, onRegistered, onCancel }: RegistrationF
       const f = friendlyError(err);
       setFailure(f);
       if (Object.keys(f.fields).length > 0) setErrors(f.fields);
-      if (f.code === 'ACCESS_CODE_INVALID') setErrors((prev) => ({ ...prev, accessCode: 'That code was not accepted.' }));
+      if (f.code === 'ACCESS_CODE') setErrors((prev) => ({ ...prev, accessCode: 'That code was not accepted.' }));
       setBusy(false);
     }
   };

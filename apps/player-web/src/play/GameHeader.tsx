@@ -1,7 +1,8 @@
 import type { TournamentPublicSummary } from '@jpb/shared-types';
 import { BlindClock, IconButton, PlayerHeader } from '@jpb/ui';
 
-const PRE_START = new Set(['DRAFT', 'REGISTRATION', 'REGISTRATION_CLOSED', 'STARTING']);
+/** No running blind clock before play starts or after it ended. */
+const NO_CLOCK = new Set(['DRAFT', 'REGISTRATION', 'REGISTRATION_CLOSED', 'STARTING', 'COMPLETED', 'CANCELLED']);
 
 export interface GameHeaderProps {
   name: string;
@@ -16,7 +17,7 @@ export interface GameHeaderProps {
 /** Tournament name, quiet status, the blind clock line, and the few controls a player needs. */
 export function GameHeader({ name, tournament, serverOffsetMs, onLog, onInfo, onSettings }: GameHeaderProps) {
   const level = tournament?.currentLevel;
-  const showClock = tournament && level && !PRE_START.has(tournament.status);
+  const showClock = tournament && level && !NO_CLOCK.has(tournament.status);
   return (
     <PlayerHeader
       tournamentName={tournament?.name ?? name}

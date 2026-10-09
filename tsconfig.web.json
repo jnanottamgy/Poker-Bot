@@ -20,7 +20,8 @@
     "packages/ui/gallery",
     "apps/*/src",
     "apps/*/test",
-    "apps/*/vite.config.ts"
+    "apps/*/vite.config.ts",
+    "tests/integration/admin-api-*.ts"
   ],
   "exclude": [
     "**/node_modules",

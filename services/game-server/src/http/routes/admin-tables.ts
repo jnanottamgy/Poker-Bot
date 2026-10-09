@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AdminTableView, Permission, SeatScoreDto, TableDetailDto } from '@jpb/shared-types';
 import type { DirectorInput } from '@jpb/tournament-engine';
 import { requireAdmin } from '../context';
-import { notFound } from '../errors';
+import { badRequest, notFound } from '../errors';
 import { channels } from '../../bus/bus';
 import type { MessageBus } from '../../bus/bus';
 import type { AdminChannelMessage } from '../../runtime/contracts';
@@ -104,7 +104,7 @@ export function registerAdminTableRoutes(app: FastifyInstance, deps: TableRouteD
   app.get<P>('/api/admin/tables/:tableId/seat-scores', async (req) => {
     const { tournamentId, tableId } = await tableFor(req, 'PLAYER_MOVE');
     const playerId = (req.query as { playerId?: unknown }).playerId;
-    if (typeof playerId !== 'string' || !playerId) throw notFound('Player');
+    if (typeof playerId !== 'string' || !playerId) throw badRequest('INVALID_INPUT', 'Choose the player to seat (playerId).');
     const scores = await game.directorQuery<SeatScoreDto[]>(tournamentId, { q: 'SEAT_SCORES', tableId, playerId });
     if (!scores) throw notFound('Table or player');
     return { seats: scores };

@@ -11,11 +11,14 @@ export interface RejoinCredentials {
 const PUBLIC_ID = /^[A-Z]{2,5}-[A-Z0-9]{3,10}$/;
 const REJOIN_CODE = /^[A-Z0-9]{3,16}(-[A-Z0-9]{3,16}){0,3}$/;
 
+/** Player IDs use Crockford base32 after the prefix (no I, L, O, U): typed look-alikes map to digits. */
+const crockford = (s: string) => s.replace(/O/g, '0').replace(/[IL]/g, '1');
+
 export function normalizePublicId(raw: string): string {
   const s = raw.trim().toUpperCase().replace(/\s+/g, '');
   // "JPN7A42" → "JPN-7A42"
-  const m = /^([A-Z]{3})([A-Z0-9]{3,10})$/.exec(s);
-  return m ? `${m[1]}-${m[2]}` : s;
+  const m = /^([A-Z]{3})-?([A-Z0-9]{3,10})$/.exec(s);
+  return m ? `${m[1]}-${crockford(m[2] ?? '')}` : s;
 }
 
 export function normalizeRejoinCode(raw: string): string {

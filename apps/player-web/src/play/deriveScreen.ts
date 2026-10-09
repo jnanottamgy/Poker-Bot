@@ -17,8 +17,11 @@ export type ScreenKind =
   | 'moving'
   | 'table';
 
-/** Gateway refusals that mean "this browser has no valid player session". */
-export const AUTH_ERROR_CODES: ReadonlySet<string> = new Set(['UNAUTHORIZED', 'FORBIDDEN', 'PLAYER_NOT_FOUND']);
+/**
+ * Gateway hello refusals (closed with 4401/4403) that mean "this browser has
+ * no valid player session": reconnecting cannot help, the player must rejoin.
+ */
+export const AUTH_ERROR_CODES: ReadonlySet<string> = new Set(['UNAUTHORIZED', 'FORBIDDEN', 'SESSION_REVOKED', 'PLAYER_NOT_FOUND']);
 
 const PRE_START = new Set(['DRAFT', 'REGISTRATION', 'REGISTRATION_CLOSED', 'STARTING']);
 
@@ -33,6 +36,8 @@ export function deriveScreen(s: GameState, opts: { spectate: boolean }): ScreenK
   const self = s.self;
   const t = s.tournament;
   if (!self || !t) return 'connecting';
+  // Once the tournament is over everyone sees the result (busted players included), not the rail.
+  if ((t.status === 'COMPLETED' || t.status === 'CANCELLED') && self.status !== 'PENDING_APPROVAL') return 'completed';
   switch (self.status) {
     case 'PENDING_APPROVAL':
       return 'pending';

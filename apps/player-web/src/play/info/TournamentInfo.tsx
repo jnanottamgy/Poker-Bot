@@ -20,6 +20,7 @@ export function TournamentInfo({ joinCode, tournament, self, joinInfo, serverOff
   const currency = joinInfo?.prizes.currency ?? 'INR';
   const c = tournament?.counters;
   const level = tournament?.currentLevel;
+  const finished = tournament?.status === 'COMPLETED' || tournament?.status === 'CANCELLED';
   return (
     <div className="pw-info">
       {tournament && c && (
@@ -36,7 +37,7 @@ export function TournamentInfo({ joinCode, tournament, self, joinInfo, serverOff
           />
         </section>
       )}
-      {tournament && level && (
+      {tournament && level && !finished && (
         <section className="pw-info__section" aria-labelledby="blinds-title">
           <h2 id="blinds-title" className="pw-info__h">
             Blinds
@@ -52,7 +53,7 @@ export function TournamentInfo({ joinCode, tournament, self, joinInfo, serverOff
           />
         </section>
       )}
-      <LeaderboardSection joinCode={joinCode} playerId={self?.playerId ?? null} currency={currency} refreshKey={refreshKey} />
+      <LeaderboardSection joinCode={joinCode} playerId={self?.playerId ?? null} currency={currency} refreshKey={refreshKey} initialMode={finished ? 'finish' : 'stack'} />
       <section className="pw-info__section" aria-labelledby="prize-title">
         <h2 id="prize-title" className="pw-info__h">
           Prizes

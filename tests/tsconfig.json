@@ -1,0 +1,11 @@
+{
+  // The admin API contract test imports the admin app's browser client (DOM lib)
+  // together with the game server (node). The root tsconfig.json excludes it and
+  // tsconfig.web.json type-checks it; this file lets `tsc -p tests` check it alone.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["integration/admin-api-*.ts"]
+}

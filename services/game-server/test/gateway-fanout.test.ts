@@ -360,7 +360,31 @@ describe.skipIf(!TEST_DATABASE_URL)('gateway fan-out over real sockets', () => {
     const snap = await d.waitFor((f) => f.t === 'snapshot' && (f.snapshot as { featured: { tableId: string } | null }).featured?.tableId === TABLE_B);
     expect(snap.snapshot).toMatchObject({ audience: 'DISPLAY' });
     backend.featured.set(T, TABLE);
+    // tableId null = back to automatic: displays follow the director's choice, never "no table".
+    await bus.publish(channels.tournamentEvents(T), { kind: 'DISPLAY_FEATURED_CHANGED', tournamentId: T, tableId: null } satisfies TournamentChannelMessage);
+    await d.waitFor((f) => f.t === 'snapshot' && (f.snapshot as { featured: { tableId: string } | null }).featured?.tableId === TABLE);
+    expect(d.of('snapshot').some((f) => (f.snapshot as { featured: unknown }).featured === null)).toBe(false);
     d.close();
+  });
+
+  it('DISPLAY_SCENE reaches DISPLAY sockets only, as a display_scene frame', async () => {
+    const d = await TestClient.connect(node.url, { audience: 'DISPLAY', tournamentId: T });
+    const s = await TestClient.connect(node.url, { audience: 'SPECTATOR', tournamentId: T });
+    const p = await TestClient.connect(node.url, { audience: 'PLAYER', tournamentId: T }, { cookie: cookies[0] });
+    const scene = (f: { t: string }) => f.t === ('display_scene' as string);
+    await bus.publish(channels.tournamentEvents(T), { kind: 'DISPLAY_SCENE', tournamentId: T, scene: 'LEADERBOARD', tableId: null });
+    const f = await d.waitFor((x) => scene(x));
+    expect(f).toMatchObject({ t: 'display_scene', scene: 'LEADERBOARD', tableId: null });
+    expect(typeof f.st).toBe('number');
+    // Malformed scene messages are dropped.
+    await bus.publish(channels.tournamentEvents(T), { kind: 'DISPLAY_SCENE', tournamentId: T, scene: 'X'.repeat(41), tableId: null });
+    await bus.publish(channels.tournamentEvents(T), { kind: 'DISPLAY_SCENE', tournamentId: T, scene: 'FEATURED_TABLE', tableId: TABLE });
+    await d.waitFor((x) => scene(x) && x.scene === 'FEATURED_TABLE');
+    await sleep(50);
+    expect(d.frames.filter(scene)).toHaveLength(2);
+    expect(s.frames.some(scene)).toBe(false);
+    expect(p.frames.some(scene)).toBe(false);
+    for (const c of [d, s, p]) c.close();
   });
 
   it('snapshot_request returns a fresh snapshot and is rate limited', async () => {

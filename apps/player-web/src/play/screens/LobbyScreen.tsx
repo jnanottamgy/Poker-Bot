@@ -10,6 +10,8 @@ export interface LobbyScreenProps {
   serverOffsetMs: number;
   /** Scheduled start from the join info (fallback when the clock has no start yet). */
   startTime: number | null;
+  /** Configured starting stack (join info): chips are only assigned when the player is seated. */
+  startingStack: number | null;
   onSettings: () => void;
 }
 
@@ -18,20 +20,22 @@ function firstName(name: string): string {
 }
 
 /** "WELCOME · TABLE 47 · SEAT 6 · STARTING STACK 10,000 · TOURNAMENT STARTING 00:27". */
-export function LobbyScreen({ self, tournament, serverOffsetMs, startTime, onSettings }: LobbyScreenProps) {
+export function LobbyScreen({ self, tournament, serverOffsetMs, startTime, startingStack, onSettings }: LobbyScreenProps) {
   const starting = tournament.status === 'STARTING';
   const target = tournament.clock.levelStartedAt ?? startTime;
   const remaining = useServerCountdown(target, serverOffsetMs, { intervalMs: 250 });
   const seated = self.tableNumber !== null && self.seat !== null;
+  // The server keeps stack 0 until the seat is assigned; show the configured starting stack meanwhile.
+  const stack = self.stack > 0 ? self.stack : (startingStack ?? self.stack);
   const tiles: InfoTile[] = seated
     ? [
         { label: 'Table', value: self.tableNumber },
         { label: 'Seat', value: (self.seat ?? 0) + 1 },
-        { label: 'Starting stack', value: formatChips(self.stack), emphasis: true },
+        { label: 'Starting stack', value: formatChips(stack), emphasis: true },
       ]
     : [
         { label: 'Player ID', value: <span className="jpb-mono">{self.publicId}</span> },
-        { label: 'Starting stack', value: formatChips(self.stack), emphasis: true },
+        { label: 'Starting stack', value: formatChips(stack), emphasis: true },
       ];
   const countdownLabel = starting ? 'Tournament starting' : 'Starts in';
 
@@ -45,7 +49,8 @@ export function LobbyScreen({ self, tournament, serverOffsetMs, startTime, onSet
         </span>
       </div>
       <p className="pw-lobby__meta">
-        <span className="jpb-num">{formatCount(tournament.counters.registered)}</span> players registered · Player ID <span className="jpb-mono">{self.publicId}</span>
+        <span className="jpb-num">{formatCount(tournament.counters.registered)}</span> {tournament.counters.registered === 1 ? 'player' : 'players'} registered · Player ID{' '}
+        <span className="jpb-mono">{self.publicId}</span>
       </p>
       <ul className="pw-tips">
         <li>Keep this page open — it updates live.</li>

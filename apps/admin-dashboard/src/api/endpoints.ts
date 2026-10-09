@@ -2,9 +2,11 @@ import type { Permission } from '@jpb/shared-types';
 
 /**
  * Every REST endpoint of docs/API.md ("Public" and "Admin" sections), as data.
- * The typed client (`client.ts`) only calls endpoints through this registry,
- * and `test/api-client.test.ts` parses docs/API.md to prove the registry and
- * the document list exactly the same method + path pairs.
+ * The typed client (`client.ts`) only calls endpoints through this registry.
+ * tests/integration/admin-api-contract.test.ts parses docs/API.md to prove the
+ * registry and the document list exactly the same method + path pairs, checks
+ * that the real game server serves every one of them, and calls each through
+ * this client against the real server.
  *
  * `level` is the danger level of docs/ADMIN_CONTROL_ROOM.md §4 and `word` the
  * confirmation word an L2 endpoint requires in its body (`{ reason, confirm }`).
@@ -104,6 +106,8 @@ export const ENDPOINTS = {
   tableFreeze: adm('POST', '/api/admin/tables/:tableId/freeze', 'TABLE_CONTROL', 1),
   tableUnfreeze: adm('POST', '/api/admin/tables/:tableId/unfreeze', 'TABLE_CONTROL', 1),
   tableForceTimeout: adm('POST', '/api/admin/tables/:tableId/force-timeout', 'TABLE_CONTROL', 1),
+  tableAddTime: adm('POST', '/api/admin/tables/:tableId/add-time', 'TABLE_CONTROL', 1),
+  tableSeatScores: adm('GET', '/api/admin/tables/:tableId/seat-scores', 'PLAYER_MOVE'),
   tableBreak: adm('POST', '/api/admin/tables/:tableId/break', 'TABLE_CONTROL', 2, 'BREAK'),
   tableRevealHoleCards: adm('POST', '/api/admin/tables/:tableId/reveal-hole-cards', 'VIEW_HOLE_CARDS', 2, 'REVEAL'),
   tournamentRebalance: adm('POST', `${T}/rebalance`, 'TABLE_CONTROL', 1),
@@ -123,6 +127,7 @@ export const ENDPOINTS = {
   playerNotice: adm('POST', '/api/admin/players/:playerId/notice', 'ANNOUNCE', 1),
   playerApprove: adm('POST', '/api/admin/players/:playerId/approve', 'PLAYER_APPROVE_REGISTRATION', 1),
   playerReject: adm('POST', '/api/admin/players/:playerId/reject', 'PLAYER_APPROVE_REGISTRATION', 1),
+  playerReenter: adm('POST', '/api/admin/players/:playerId/reenter', 'PLAYER_APPROVE_REGISTRATION', 1),
   registrationManual: adm('POST', `${T}/registrations/manual`, 'PLAYER_APPROVE_REGISTRATION', 1),
   tournamentQrSvg: adm('GET', `${T}/qr.svg`, 'PLAYER_VIEW', 0, undefined, true),
 

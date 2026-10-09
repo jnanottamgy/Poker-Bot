@@ -84,16 +84,16 @@ function register(state: MockState, joinCode: string, body: RegisterRequest): Re
   const info = mockJoinInfo(state, joinCode);
   if (!info.registration.open) throw new HttpError(409, 'REGISTRATION_CLOSED', 'Registration for this tournament is closed.');
   if (info.registration.requiresAccessCode && (body.accessCode ?? '').trim().toUpperCase() !== MOCK_ACCESS_CODE) {
-    throw new HttpError(403, 'ACCESS_CODE_INVALID', 'That access code is not right. Ask the organiser for the venue code.');
+    throw new HttpError(403, 'ACCESS_CODE', 'That access code is not correct. Ask the organizers.');
   }
   const missing = info.registration.fields.filter((f) => f.required && !(body.fields[f.key] ?? '').trim());
   if (missing.length > 0) {
-    throw new HttpError(400, 'VALIDATION_FAILED', 'Please fill in the required fields.', { fields: Object.fromEntries(missing.map((f) => [f.key, 'Required'])) });
+    throw new HttpError(400, 'INVALID_FIELDS', 'Please check the highlighted fields.', missing.map((f) => ({ field: f.key, message: 'Required' })));
   }
   if ((body.fields.participantId ?? '').trim() === '0000') {
-    throw new HttpError(409, 'ALREADY_REGISTERED', 'This ticket number is already registered. Use “Rejoin” with your code instead.');
+    throw new HttpError(409, 'REJECTED', 'This ticket number is already registered. Use “Rejoin” with your code instead.');
   }
-  if (!body.clientSeed || !/^[0-9a-f]{64}$/.test(body.clientSeed)) throw new HttpError(400, 'VALIDATION_FAILED', 'Something went wrong. Please try again.');
+  if (!body.clientSeed || !/^[0-9a-f]{64}$/.test(body.clientSeed)) throw new HttpError(400, 'INVALID_INPUT', 'Some fields are invalid.');
   const rng = seededRng(hashSeed(`${body.fields.name}:${body.clientSeed}`));
   const publicId = `JPN-${code(rng, 4)}`;
   const rejoinCode = `${code(rng, 4)}-${code(rng, 4)}`;
@@ -110,7 +110,7 @@ function rejoin(state: MockState, body: RejoinRequest): RejoinResponse {
   const issued = state.issuedCodes.get(publicId);
   const wellFormed = /^JPN-[0-9A-Z]{4}$/.test(publicId) && /^[0-9A-Z]{4}-?[0-9A-Z]{4}$/.test(rejoinCode);
   if (!wellFormed || (issued !== undefined && issued.replace('-', '') !== rejoinCode.replace('-', ''))) {
-    throw new HttpError(401, 'REJOIN_INVALID', 'That player ID and rejoin code do not match.');
+    throw new HttpError(401, 'REJOIN_FAILED', 'That player ID and rejoin code do not match. Ask a tournament staff member for help.');
   }
   const current = state.identity();
   const displayName = current?.publicId === publicId ? current.displayName : 'Johnny Kowalski';
@@ -155,6 +155,13 @@ const ROUTES: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
   { method: 'GET', pattern: /^\/api\/player\/history$/, handler: (s) => s.server().history() },
   {
     method: 'POST',
+    pattern: /^\/api\/player\/reenter$/,
+    handler: () => {
+      throw new HttpError(409, 'REENTRY_DISABLED', 'This tournament does not allow re-entry.');
+    },
+  },
+  {
+    method: 'POST',
     pattern: /^\/api\/player\/logout$/,
     handler: (s) => {
       s.setIdentity(null);
@@ -173,7 +180,7 @@ export function createMockFetch(state: MockState, latencyMs = 180): typeof fetch
     try {
       const params = (url.pathname.match(route.pattern) ?? []).slice(1);
       const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null;
-      return json(method === 'POST' && route.pattern.source.includes('register') ? 201 : 200, route.handler(state, params, url.searchParams, body));
+      return json(200, route.handler(state, params, url.searchParams, body));
     } catch (e) {
       if (e instanceof HttpError) return json(e.status, { error: { code: e.code, message: e.message, details: e.details } } satisfies ApiErrorBody);
       return json(500, { error: { code: 'INTERNAL', message: 'Something went wrong on our side.', details: null } } satisfies ApiErrorBody);

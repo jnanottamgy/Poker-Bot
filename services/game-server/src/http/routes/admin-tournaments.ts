@@ -33,6 +33,12 @@ export interface TournamentRouteDeps extends GameRouteDeps {
 
 const LIVE: readonly TournamentStatus[] = ['STARTING', 'RUNNING', 'BREAK', 'PAUSED', 'FINAL_TABLE'];
 
+/** Audit action of a discarded draft (DELETE); such tournaments are left out of the admin list. */
+const TOURNAMENT_DELETED = 'TOURNAMENT_DELETED';
+
+/** Scenes of the broadcast display (docs/API.md `POST …/display`). */
+export const DISPLAY_SCENES: readonly string[] = ['OVERVIEW', 'LEADERBOARD', 'FINAL_TABLE', 'ANNOUNCEMENT', 'CHAMPION', 'FEATURED_TABLE'];
+
 export function tournamentListItem(t: TournamentRecord): TournamentListItemDto {
   return {
     id: t.id,
@@ -131,6 +137,12 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
     };
   }
 
+  /** Drafts discarded with DELETE (see there): still in the database for the audit log, never listed. */
+  async function deletedDrafts(): Promise<Set<string>> {
+    const r = await ctx.store.repos.q.query<{ tournament_id: string }>(`SELECT DISTINCT tournament_id FROM audit_logs WHERE action = $1 AND tournament_id IS NOT NULL`, [TOURNAMENT_DELETED]);
+    return new Set(r.rows.map((x) => x.tournament_id));
+  }
+
   // ------------------------------------------------------------------ list / create / overview
 
   app.get('/api/admin/tournaments', async (req) => {
@@ -139,8 +151,9 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
     const q = req.query as Record<string, unknown>;
     const status = strParam(q.status, 40) as TournamentStatus | undefined;
     const rows = await ctx.store.repos.tournaments.list({ ...(status ? { status: [status] } : {}), includeSimulations: boolParam(q.simulations) ?? false, limit: 500 });
+    const deleted = await deletedDrafts();
     const scope = p.admin.tournamentScope;
-    return { tournaments: rows.filter((t) => !scope || scope.includes(t.id)).map(tournamentListItem) };
+    return { tournaments: rows.filter((t) => !deleted.has(t.id) && (!scope || scope.includes(t.id))).map(tournamentListItem) };
   });
 
   app.post('/api/admin/tournaments', async (req) => {
@@ -224,15 +237,12 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
     const { principal, tournament } = await adminForTournament(deps, req, 'TOURNAMENT_CREATE', req.params.id);
     const reason = reasonFor(req.body, { level: 1 });
     if (tournament.status !== 'DRAFT') throw conflict('INVALID_STATE', 'Only draft tournaments can be deleted. Cancel it instead.');
-    await ctx.store.transaction(async (repos) => {
-      await repos.q.query(`DELETE FROM director_inputs WHERE tournament_id = $1`, [tournament.id]);
-      await repos.q.query(`DELETE FROM director_snapshots WHERE tournament_id = $1`, [tournament.id]);
-      await repos.q.query(`DELETE FROM tournament_events WHERE tournament_id = $1`, [tournament.id]);
-      await repos.q.query(`DELETE FROM tournaments WHERE id = $1 AND status = 'DRAFT'`, [tournament.id]);
-    });
+    // The append-only, hash-chained audit log keeps referring to the draft (TOURNAMENT_CREATED, CONFIG_UPDATED…),
+    // so its row can never be removed. The draft is discarded instead: cancelled by Johnny, audited as
+    // TOURNAMENT_DELETED, and left out of the tournament list from then on.
+    await directorAdmin(deps, req, principal, tournament.id, { type: 'CANCEL', admin: { adminId: principal.admin.id, reason } }, { action: TOURNAMENT_DELETED, target: `tournament:${tournament.id}`, reason });
     await game.node.host.deactivate('director', tournament.id, 'tournament deleted').catch(() => undefined);
     game.invalidateTournament(tournament.id);
-    await ctx.audit.record({ admin: principal.admin, action: 'TOURNAMENT_DELETED', target: `tournament:${tournament.id}`, tournamentId: null, reason, before: { name: tournament.name }, after: null, ip: req.ip });
     return OK;
   });
 
@@ -256,7 +266,24 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
   lifecycle('cancel', 'TOURNAMENT_CANCEL', { level: 2, word: 'CANCEL' }, 'CANCEL_TOURNAMENT', (admin) => ({ type: 'CANCEL', admin }));
   lifecycle('clock/advance', 'CLOCK_CONTROL', { level: 1 }, 'CLOCK_ADVANCE', (admin) => ({ type: 'ADVANCE_LEVEL', admin }));
   lifecycle('break/end', 'CLOCK_CONTROL', { level: 1 }, 'BREAK_ENDED', (admin) => ({ type: 'END_BREAK', admin }));
-  lifecycle('rebalance', 'TABLE_CONTROL', { level: 1 }, 'REBALANCE', (admin) => ({ type: 'REBALANCE', admin }));
+
+  /** Players the director has ordered off their table: in-flight departures plus everyone at a BREAKING table. */
+  async function playersLeaving(tournamentId: string): Promise<Set<string>> {
+    const tables = (await game.directorQuery<DirectorTable[]>(tournamentId, { q: 'TABLES' })) ?? [];
+    const out = new Set<string>();
+    for (const t of tables) for (const s of t.summary.seats) if (s.movingOut || t.summary.status === 'BREAKING') out.add(s.playerId);
+    return out;
+  }
+
+  // Answers how many players this rebalance sends to another table (the control room reports "N moves" or "already balanced").
+  app.post<P>(`${T}/rebalance`, async (req) => {
+    const { principal, tournament } = await adminForTournament(deps, req, 'TABLE_CONTROL', req.params.id);
+    const reason = reasonFor(req.body, { level: 1 });
+    const before = await playersLeaving(tournament.id);
+    await directorAdmin(deps, req, principal, tournament.id, { type: 'REBALANCE', admin: { adminId: principal.admin.id, reason } }, { action: 'REBALANCE', target: `tournament:${tournament.id}`, reason });
+    const after = await playersLeaving(tournament.id);
+    return { ok: true, movesPlanned: [...after].filter((id) => !before.has(id)).length };
+  });
 
   app.post<P>(`${T}/start`, async (req) => {
     const { principal, tournament } = await adminForTournament(deps, req, 'TOURNAMENT_LIFECYCLE', req.params.id);
@@ -431,6 +458,7 @@ export function registerAdminTournamentRoutes(app: FastifyInstance, deps: Tourna
     const { principal, tournament } = await adminForTournament(deps, req, 'ANNOUNCE', req.params.id);
     const body = (req.body ?? {}) as { scene?: unknown; featuredTableId?: unknown };
     const scene = strParam(body.scene, 40) ?? 'OVERVIEW';
+    if (!DISPLAY_SCENES.includes(scene)) throw badRequest('INVALID_INPUT', `Choose a display scene: ${DISPLAY_SCENES.join(', ')}.`);
     const featured = typeof body.featuredTableId === 'string' && body.featuredTableId ? body.featuredTableId : null;
     if (featured && (await game.tableTournament(featured)) !== tournament.id) throw badRequest('INVALID_TABLE', 'That table is not part of this tournament.');
     await directorAdmin(deps, req, principal, tournament.id, { type: 'SET_FEATURED_TABLE', tableId: featured, admin: { adminId: principal.admin.id, reason: null } }, { action: 'DISPLAY_SCENE', target: 'display', reason: null });

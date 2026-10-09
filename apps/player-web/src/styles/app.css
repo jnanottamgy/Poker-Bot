@@ -1120,3 +1120,49 @@ body {
   animation: none !important;
   transition: none !important;
 }
+
+/* ------------------------------------------------ phone layout hardening -- */
+/* One column that may shrink below its content's min-content width: a long
+   tournament name or status pill must ellipsize, never widen the page. */
+.pw-phone {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pw-phone .jpb-phead {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pw-phone .jpb-phead__row,
+.pw-phone .jpb-phead__row > * {
+  min-width: 0;
+}
+.pw-phone .jpb-phead__end,
+.pw-phone .jpb-phead__row > .jpb-pill {
+  flex: none;
+}
+
+/* ---------------------------------------------------------- staff message -- */
+.pw-staffmsg__text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* --------------------------------------------------------------- re-entry -- */
+.pw-reentry-cta {
+  display: grid;
+  gap: var(--jpb-space-3);
+  width: min(100%, 440px);
+  padding: var(--jpb-space-5) var(--jpb-space-4);
+  border: 1px solid var(--jpb-accent-line, var(--jpb-border-strong));
+  border-radius: var(--jpb-radius-lg, 16px);
+  background: var(--jpb-surface);
+  text-align: center;
+}
+.pw-reentry-cta__title {
+  margin: 0;
+  font-family: var(--jpb-font-display);
+  font-size: var(--jpb-fs-xl, 22px);
+  font-weight: var(--jpb-weight-black);
+}
+.pw-reentry__body {
+  display: grid;
+  gap: var(--jpb-space-3);
+}

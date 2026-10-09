@@ -2,10 +2,31 @@ import type { PlayerSelfSummary, TournamentEventEnvelope, TournamentPublicSummar
 import { Button, EliminationCard, Icon, formatMoneyMinor, formatOrdinal } from '@jpb/ui';
 import { Screen } from '../../components/Screen';
 
-/** After elimination (also after a reload, when the notice is gone): summary + watch. */
-export function EliminatedScreen({ self, tournament, currency, onWatch, onInfo }: { self: PlayerSelfSummary; tournament: TournamentPublicSummary; currency: string; onWatch: () => void; onInfo: () => void }) {
+export interface EliminatedScreenProps {
+  self: PlayerSelfSummary;
+  tournament: TournamentPublicSummary;
+  currency: string;
+  onWatch: () => void;
+  onInfo: () => void;
+  /** Present while the tournament still accepts this player's re-entry. */
+  onReenter?: () => void;
+}
+
+/** After elimination (also after a reload, when the notice is gone): summary, re-entry when open, watch. */
+export function EliminatedScreen({ self, tournament, currency, onWatch, onInfo, onReenter }: EliminatedScreenProps) {
   return (
     <div className="pw-center">
+      {onReenter && (
+        <section className="pw-reentry-cta" aria-labelledby="reentry-title">
+          <p className="pw-eyebrow">Re-entry is open</p>
+          <h2 id="reentry-title" className="pw-reentry-cta__title">
+            Back in with a fresh stack
+          </h2>
+          <Button variant="primary" size="xl" block icon="refresh" onClick={onReenter}>
+            Re-enter
+          </Button>
+        </section>
+      )}
       <EliminationCard
         finishPosition={self.finishPosition ?? tournament.counters.active + 1}
         fieldSize={tournament.counters.registered}

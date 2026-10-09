@@ -8,9 +8,18 @@ import { useAsync } from '../../hooks/useAsync';
 const PAGE = 25;
 
 /** Leaderboard with an explicit label: "Current stack ranking" vs "Finishing positions". */
-export function LeaderboardSection({ joinCode, playerId, currency, refreshKey }: { joinCode: string; playerId: string | null; currency: string; refreshKey: number }) {
+export interface LeaderboardSectionProps {
+  joinCode: string;
+  playerId: string | null;
+  currency: string;
+  refreshKey: number;
+  /** Finishing positions are the interesting view once the tournament is over. */
+  initialMode?: LeaderboardMode;
+}
+
+export function LeaderboardSection({ joinCode, playerId, currency, refreshKey, initialMode = 'stack' }: LeaderboardSectionProps) {
   const { api } = useBackend();
-  const [mode, setMode] = useState<LeaderboardMode>('stack');
+  const [mode, setMode] = useState<LeaderboardMode>(initialMode);
   const [limit, setLimit] = useState(PAGE);
   const board = useAsync((signal) => api.leaderboard(joinCode, { mode, offset: 0, limit }, signal), [joinCode, mode, limit, refreshKey]);
   const rows: LeaderboardRow[] = (board.data?.rows ?? []).map((r) => ({

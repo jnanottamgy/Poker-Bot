@@ -6,6 +6,7 @@ import type {
   Paginated,
   PayoutRowDto,
   PayoutsDto,
+  SeatScoreDto,
   TournamentReportDto,
   TournamentStatus,
 } from '@jpb/shared-types';
@@ -15,7 +16,7 @@ import { findHand, handDetail, handFairnessRecord } from './hands';
 import { Rng, fakeHash } from './rng';
 import { MockHttpError } from './server';
 import type { MockServer } from './server';
-import type { MockAdmin, MockPlayer, MockTournament } from './state';
+import type { MockAdmin, MockPlayer, MockTable, MockTournament } from './state';
 import { counters, isActivePlayer, openTables, overview, playerDetail, playerListItem, summary, tableDetail, tableListItem, tableListStatus, tournamentListItem } from './views';
 import { MOCK_PASSWORD } from './world';
 
@@ -33,6 +34,7 @@ export type HandlerResult = unknown | { __text: string; contentType: string };
 export type Handler = (ctx: HandlerCtx) => HandlerResult;
 
 const text = (body: string, contentType: string) => ({ __text: body, contentType });
+const DISPLAY_SCENES: readonly string[] = ['OVERVIEW', 'LEADERBOARD', 'FINAL_TABLE', 'ANNOUNCEMENT', 'CHAMPION', 'FEATURED_TABLE'];
 const ok = { ok: true };
 
 function num(q: URLSearchParams, key: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
@@ -54,7 +56,7 @@ function reasonOf(ctx: HandlerCtx): string | null {
 
 function requireScope(ctx: HandlerCtx, t: MockTournament): MockTournament {
   const scope = ctx.admin?.tournamentScope;
-  if (scope && !scope.includes(t.id)) throw new MockHttpError(403, 'OUT_OF_SCOPE', 'You are not assigned to this tournament.');
+  if (scope && !scope.includes(t.id)) throw new MockHttpError(403, 'FORBIDDEN', 'You do not have permission to do that.');
   return t;
 }
 
@@ -169,6 +171,24 @@ function rejoinCode(rng: Rng): string {
   return `${rng.code(4)}-${rng.code(4)}`;
 }
 
+/** Same format as the game server (services/game-server/src/http/qr.ts rejoinUrl): code in the fragment, never in server logs. */
+function rejoinUrl(t: MockTournament, publicId: string, code: string): string {
+  const base = typeof location === 'undefined' ? 'https://poker.example' : location.origin;
+  return `${base}/join/${encodeURIComponent(t.joinCode)}#rejoin=${encodeURIComponent(publicId)}:${encodeURIComponent(code)}`;
+}
+
+/** Free seats of a table scored for an incoming player (mock stand-in for Johnny's documented seat formula). */
+function seatScores(tb: MockTable, playerId: string): SeatScoreDto[] {
+  const rng = new Rng(`${tb.tableId}:${playerId}`);
+  const free = tb.seats.flatMap((s, seat) => (s === null ? [seat] : []));
+  const scored = free.map((seat) => {
+    const breakdown = { position: rng.int(0, 4), blindFairness: rng.int(0, 3), recentMove: 0, seatCompatibility: rng.int(0, 2) / 10 };
+    return { seat, score: Math.round(Object.values(breakdown).reduce((a, b) => a + b, 0) * 10) / 10, breakdown, best: false };
+  });
+  const best = scored.reduce<SeatScoreDto | null>((b, x) => (!b || x.score < b.score ? x : b), null);
+  return scored.map((x) => ({ ...x, best: x === best }));
+}
+
 function requireStatus(t: MockTournament, allowed: TournamentStatus[], message: string): void {
   if (!allowed.includes(t.status)) throw new MockHttpError(409, 'INVALID_STATE', message);
 }
@@ -199,7 +219,7 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
     if (t.status !== 'REGISTRATION') throw new MockHttpError(409, 'REGISTRATION_CLOSED', 'Registration is closed.');
     const fields = (ctx.body.fields ?? {}) as Record<string, string>;
     const name = (fields.name ?? '').trim();
-    if (!name) throw new MockHttpError(400, 'INVALID_INPUT', 'Please enter your name.');
+    if (!name) throw new MockHttpError(400, 'INVALID_FIELDS', 'Please check the highlighted fields.', [{ key: 'name', message: 'Please enter your name.' }]);
     const p = newPlayer(ctx.server, t, name, fields);
     p.status = t.config.registration.requireApproval ? 'PENDING_APPROVAL' : 'REGISTERED';
     return { player: { playerId: p.playerId, publicId: p.publicId, displayName: p.displayName, status: p.status }, tournamentId: t.id, rejoinCode: rejoinCode(new Rng(p.playerId)), csrfToken: 'mock-csrf' };
@@ -207,7 +227,7 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
   publicRejoin: (ctx) => {
     const t = byJoinCode(ctx);
     const p = t.players.find((x) => x.publicId === ctx.body.publicId);
-    if (!p) throw new MockHttpError(401, 'INVALID_REJOIN', 'That public id and rejoin code do not match.');
+    if (!p) throw new MockHttpError(401, 'REJOIN_FAILED', 'That player ID and rejoin code do not match. Ask a tournament staff member for help.');
     return { player: { playerId: p.playerId, publicId: p.publicId, displayName: p.displayName }, tournamentId: t.id, csrfToken: 'mock-csrf' };
   },
   publicSummary: (ctx) => summary(byJoinCode(ctx)),
@@ -305,7 +325,10 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
   registrationOpen: (ctx) => lifecycle(ctx, (t) => ctx.server.transition(t, 'REGISTRATION', reasonOf(ctx)), 'REGISTRATION_OPENED'),
   registrationClose: (ctx) => lifecycle(ctx, (t) => ctx.server.transition(t, 'REGISTRATION_CLOSED', reasonOf(ctx)), 'REGISTRATION_CLOSED'),
   registrationReopen: (ctx) => lifecycle(ctx, (t) => ctx.server.transition(t, 'REGISTRATION', reasonOf(ctx)), 'REGISTRATION_REOPENED'),
-  tournamentStart: (ctx) => lifecycle(ctx, (t) => ctx.server.start(t), 'TOURNAMENT_STARTED'),
+  tournamentStart: (ctx) => {
+    lifecycle(ctx, (t) => ctx.server.start(t), 'TOURNAMENT_STARTED');
+    return { ok: true, publicEntropy: tour(ctx).publicEntropy ?? '' };
+  },
   tournamentPause: (ctx) => lifecycle(ctx, (t) => ctx.server.pause(t, reasonOf(ctx)), 'TOURNAMENT_PAUSED'),
   tournamentResume: (ctx) => lifecycle(ctx, (t) => ctx.server.resume(t), 'TOURNAMENT_RESUMED'),
   tournamentFreeze: (ctx) => lifecycle(ctx, (t) => ctx.server.freeze(t, reasonOf(ctx) ?? ''), 'EMERGENCY_FREEZE'),
@@ -397,6 +420,20 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
       tb.handStep += 1;
       tb.lastProgressAt = now;
     });
+  },
+  tableAddTime: (ctx) => {
+    const ms = ctx.body.ms === undefined ? 30_000 : Number(ctx.body.ms);
+    if (!Number.isInteger(ms) || ms < 1000 || ms > 600_000) throw new MockHttpError(400, 'INVALID', 'Extra time must be 1–600 seconds.');
+    return tableOp(ctx, 'TABLE_ADD_TIME', (tb) => {
+      if (tb.status !== 'IN_HAND') throw new MockHttpError(409, 'NO_ACTIVE_HAND', 'Nobody is acting at this table right now.');
+    });
+  },
+  tableSeatScores: (ctx) => {
+    const { t, table: tb } = table(ctx);
+    const playerId = ctx.query.get('playerId');
+    if (!playerId) throw new MockHttpError(400, 'INVALID_INPUT', 'Choose the player to seat (playerId).');
+    if (!t.players.some((p) => p.playerId === playerId)) throw new MockHttpError(404, 'NOT_FOUND', 'Table or player not found.');
+    return { seats: seatScores(tb, playerId) };
   },
   tableBreak: (ctx) => {
     const { t, table: tb } = table(ctx);
@@ -495,17 +532,23 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
     p.stack = next;
     return [before, { stack: next }];
   }),
-  playerRevokeSessions: (ctx) => playerOp(ctx, 'REVOKE_SESSIONS', (_t, p) => {
-    const now = ctx.server.now();
-    for (const s of p.sessions) if (s.revokedAt === null) Object.assign(s, { revokedAt: now, revokedReason: 'REVOKED_BY_ADMIN' });
-    p.connected = false;
-    return [null, { revoked: p.sessions.length }];
-  }),
+  playerRevokeSessions: (ctx) => {
+    let revoked = 0;
+    playerOp(ctx, 'REVOKE_SESSIONS', (_t, p) => {
+      const now = ctx.server.now();
+      const active = p.sessions.filter((s) => s.revokedAt === null);
+      for (const s of active) Object.assign(s, { revokedAt: now, revokedReason: 'REVOKED_BY_ADMIN' });
+      revoked = active.length;
+      p.connected = false;
+      return [null, { revoked }];
+    });
+    return { ok: true, revoked };
+  },
   playerRejoinCode: (ctx) => {
     const { t, p } = player(ctx);
     const code = rejoinCode(new Rng(`${p.playerId}:${ctx.server.now()}`));
     audited(ctx, t, 'NEW_REJOIN_CODE', `player:${p.publicId}`);
-    return { publicId: p.publicId, rejoinCode: code, rejoinUrl: `${typeof location === 'undefined' ? 'https://poker.example' : location.origin}/rejoin?code=${encodeURIComponent(code)}&id=${p.publicId}` };
+    return { publicId: p.publicId, rejoinCode: code, rejoinUrl: rejoinUrl(t, p.publicId, code) };
   },
   playerNotice: (ctx) => {
     const { t, p } = player(ctx);
@@ -515,6 +558,17 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
   },
   playerApprove: (ctx) => playerOp(ctx, 'PLAYER_APPROVED', (_t, p) => statusChange(p, ['PENDING_APPROVAL'], 'REGISTERED')),
   playerReject: (ctx) => playerOp(ctx, 'PLAYER_REJECTED', (_t, p) => statusChange(p, ['PENDING_APPROVAL'], 'WITHDRAWN')),
+  playerReenter: (ctx) => {
+    const { t, p } = player(ctx);
+    if (!t.config.reentry.enabled) throw new MockHttpError(409, 'REENTRY_DISABLED', 'This tournament does not allow re-entry.');
+    if (p.status !== 'ELIMINATED') throw new MockHttpError(409, 'NOT_ELIMINATED', 'Only eliminated players can re-enter.');
+    const entryNumber = (p.entryNumber ?? 1) + 1;
+    if (entryNumber > t.config.reentry.maxEntriesPerPlayer) throw new MockHttpError(409, 'REENTRY_LIMIT', 'This player has used every entry the tournament allows.');
+    const before = { status: p.status, entryId: p.entryId };
+    Object.assign(p, { entryId: ctx.server.nextId('ent'), entryNumber, status: 'REGISTERED', stack: t.config.startingStack, finishPosition: null, tiedCount: 1, prizeMinor: 0, elimination: null });
+    audited(ctx, t, 'PLAYER_REENTERED', `player:${p.publicId}`, before, { entryNumber });
+    return { ok: true, entryId: p.entryId, entryNumber };
+  },
   registrationManual: (ctx) => {
     const t = tour(ctx);
     requireStatus(t, ['REGISTRATION', 'REGISTRATION_CLOSED', 'RUNNING', 'BREAK', 'PAUSED'], 'Registration is not possible in this state.');
@@ -522,7 +576,8 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
     if (!fields.name?.trim()) throw new MockHttpError(400, 'INVALID_INPUT', 'A name is required.');
     const p = newPlayer(ctx.server, t, fields.name.trim(), fields);
     audited(ctx, t, 'MANUAL_REGISTRATION', `player:${p.publicId}`);
-    return { player: playerListItem(t, p, null), rejoinCode: rejoinCode(new Rng(p.playerId)) };
+    const code = rejoinCode(new Rng(p.playerId));
+    return { player: playerListItem(t, p, null), rejoinCode: code, rejoinUrl: rejoinUrl(t, p.publicId, code) };
   },
   tournamentQrSvg: (ctx) => text(qrSvg(tour(ctx).joinCode, num(ctx.query, 'size', 256, 2048) || 256), 'image/svg+xml'),
 
@@ -609,7 +664,7 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
     const before = { ...p.payment };
     p.payment = { status, paidAt: status === 'PAID' ? ctx.server.now() : null, processedBy: ctx.admin?.username ?? null, reference: (ctx.body.reference as string | null) ?? null, note: (ctx.body.note as string | null) ?? null };
     audited(ctx, t, 'PAYMENT_UPDATED', `entry:${p.entryId}`, before, p.payment);
-    return { row: payouts(t).rows.find((r) => r.entryId === p.entryId) };
+    return { row: payouts(t).rows.find((r) => r.entryId === p.entryId) ?? null };
   },
 
   // ------------------------------------------------------------ broadcast, alerts, audit, system, reports, users, demo
@@ -623,6 +678,8 @@ export const HANDLERS: Record<EndpointKey, Handler> = {
   },
   display: (ctx) => {
     const t = tour(ctx);
+    const scene = String(ctx.body.scene ?? 'OVERVIEW');
+    if (!DISPLAY_SCENES.includes(scene)) throw new MockHttpError(400, 'INVALID_INPUT', `Choose a display scene: ${DISPLAY_SCENES.join(', ')}.`);
     t.display = { scene: String(ctx.body.scene ?? 'OVERVIEW'), featuredTableId: (ctx.body.featuredTableId as string | null) ?? null };
     audited(ctx, t, 'DISPLAY_SCENE', 'display', null, t.display);
     return ok;

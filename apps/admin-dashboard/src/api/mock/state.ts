@@ -43,6 +43,8 @@ export interface MockPlayer {
   elimination: EliminationRecord | null;
   movements: MovementDto[];
   sessions: SessionDto[];
+  /** 1 for the first entry; re-entries count up (absent = 1). */
+  entryNumber?: number;
 }
 
 export interface MockTable {

@@ -7,18 +7,26 @@ import { useSettings } from '../../settings/SettingsContext';
 
 const SHOW_MS = 5_000;
 
-/** Gold "THE FINAL TABLE" moment when the server forms the final table. Static under reduced motion. */
-export function FinalTableCinematic({ client }: { client: JpbClient }) {
-  const playing = useGameState(client, (s) => s.self?.status === 'SEATED' || s.self?.status === 'IN_TRANSIT');
+/**
+ * Gold "THE FINAL TABLE" moment when the server forms the final table. Static
+ * under reduced motion. Hidden while `deferred` (the hero is deciding): the
+ * moment is never worth a timed-out hand.
+ */
+export function FinalTableCinematic({ client, deferred = false }: { client: JpbClient; deferred?: boolean }) {
+  // The final table can form at the very start (small field), before the seat is assigned: REGISTERED counts too.
+  const playing = useGameState(client, (s) => s.self?.status === 'SEATED' || s.self?.status === 'IN_TRANSIT' || s.self?.status === 'REGISTERED');
   const events = useGameState(client, (s) => s.tournamentEvents);
-  const seen = useRef(new Set<number>());
+  // Events already in the store when this mounts were shown before (or are stale): the
+  // layer unmounts behind device screens, and remounting must not replay old banners.
+  const seen = useRef<Set<number> | null>(null);
+  seen.current ??= new Set(events.map((e) => e.seq));
   const [players, setPlayers] = useState<number | null>(null);
   const { play } = useSettings();
 
   useEffect(() => {
     for (const e of events) {
-      if (seen.current.has(e.seq)) continue;
-      seen.current.add(e.seq);
+      if (seen.current?.has(e.seq)) continue;
+      seen.current?.add(e.seq);
       if (e.event.kind === 'FINAL_TABLE_FORMED') {
         setPlayers(e.event.players.length);
         play('final-table');
@@ -32,7 +40,7 @@ export function FinalTableCinematic({ client }: { client: JpbClient }) {
     return () => clearTimeout(id);
   }, [players]);
 
-  if (players === null) return null;
+  if (players === null || deferred) return null;
   return (
     <Overlay label="The final table" tone="gold" className="pw-finale">
       <div className="pw-finale__card">

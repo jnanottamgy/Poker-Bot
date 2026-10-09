@@ -8,7 +8,9 @@ import type {
   CardCode,
   FeatureFlags,
   Permission,
+  PayoutRowDto,
   PlayerListItemDto,
+  SeatScoreDto,
   SpectatorConfig,
   TableEvent,
   TableStatus,
@@ -22,10 +24,10 @@ import type { ConfirmWord } from './endpoints';
 
 /**
  * Request bodies and response envelopes that docs/API.md describes in prose
- * but packages/shared-types/src/api.ts does not define. Where the game server
- * already implements a route (auth, alerts, audit, users, sessions) these
- * mirror it exactly; the rest are this app's documented assumptions (see
- * CONTRIBUTING-SECTIONS.md → "Contract notes").
+ * but packages/shared-types/src/api.ts does not define. Every one mirrors the
+ * game server route exactly (services/game-server/src/http/routes); the
+ * contract test tests/integration/admin-api-contract.test.ts calls each
+ * endpoint of the real server through this client and checks the shapes.
  */
 
 // ---------------------------------------------------------------- shared bodies
@@ -91,6 +93,17 @@ export interface PutConfigRequest extends ReasonBody {
   config: TournamentConfig;
 }
 
+export interface StartRequest extends ReasonBody {
+  /** Optional admin entropy (dice roll, card draw…) mixed into the public entropy. */
+  adminEntropy?: string;
+}
+
+export interface StartResponse {
+  ok: boolean;
+  /** The frozen public entropy (64 hex chars) every deck of this tournament is derived from. */
+  publicEntropy: string;
+}
+
 // ---------------------------------------------------------------- tables
 
 export type TableListStatus = TableStatus | 'STALLED';
@@ -112,12 +125,29 @@ export interface TableEventsResponse {
   nextAfter: number | null;
 }
 
+export interface ForceTimeoutRequest {
+  reason: string;
+  /** Turn version the operator saw: if the turn moved on meanwhile, nobody is timed out. */
+  turnVersion?: number;
+}
+
+export interface TableAddTimeRequest extends ReasonBody {
+  /** Extra time for the current actor, 1 000–600 000 ms (server default 30 000). */
+  ms?: number;
+}
+
+export interface SeatScoresResponse {
+  /** Every free seat of the table scored for the player (lower is better; `best` marks Johnny's choice). */
+  seats: SeatScoreDto[];
+}
+
 export interface HoleCardsRevealResponse {
   holeCards: Record<number, [CardCode, CardCode]>;
 }
 
 export interface RebalanceResponse {
   ok: boolean;
+  /** Players this rebalance ordered to another table (0: already balanced). */
   movesPlanned: number;
 }
 
@@ -152,11 +182,24 @@ export interface AdjustStackRequest extends DangerBody<'ADJUST'> {
   newStack: number;
 }
 
+export interface RevokeSessionsResponse {
+  ok: boolean;
+  /** Number of player sessions revoked. */
+  revoked: number;
+}
+
 export interface RejoinCodeResponse {
   publicId: string;
   rejoinCode: string;
-  /** Absolute URL encoded in the rejoin QR. */
+  /** Absolute URL encoded in the rejoin QR: `{PUBLIC_BASE_URL}/join/{JOINCODE}#rejoin={publicId}:{rejoinCode}`. */
   rejoinUrl: string;
+}
+
+export interface ReentryResponse {
+  ok: boolean;
+  entryId: string;
+  /** 1 = first entry; a re-entry is 2, 3, … */
+  entryNumber: number;
 }
 
 export interface ManualRegistrationRequest {
@@ -166,6 +209,8 @@ export interface ManualRegistrationRequest {
 export interface ManualRegistrationResponse {
   player: PlayerListItemDto;
   rejoinCode: string;
+  /** Same format as `RejoinCodeResponse.rejoinUrl`. */
+  rejoinUrl: string;
 }
 
 // ---------------------------------------------------------------- hands, fairness, standings, payouts
@@ -192,22 +237,29 @@ export interface StandingsQuery {
   limit?: number;
 }
 
-export interface PaymentUpdateRequest {
+export interface PaymentUpdateRequest extends ReasonBody {
   status: 'UNPAID' | 'PROCESSING' | 'PAID';
   reference: string | null;
   note: string | null;
+}
+
+export interface PaymentUpdateResponse {
+  /** The updated payout row (null only if the entry no longer holds a prize). */
+  row: PayoutRowDto | null;
 }
 
 // ---------------------------------------------------------------- broadcast
 
 export type AnnounceScope = 'ALL' | 'TABLE' | 'PLAYER' | 'DISPLAY';
 
-export interface AnnounceRequest {
+export interface AnnounceRequest extends ReasonBody {
   text: string;
   scope: AnnounceScope;
-  targetId?: string;
+  /** Table id (scope TABLE) or player id (scope PLAYER). */
+  targetId?: string | null;
 }
 
+/** Server-validated (services/game-server/src/http/routes/admin-tournaments.ts DISPLAY_SCENES). */
 export type DisplayScene = 'OVERVIEW' | 'LEADERBOARD' | 'FINAL_TABLE' | 'ANNOUNCEMENT' | 'CHAMPION' | 'FEATURED_TABLE';
 
 export interface DisplayRequest {
@@ -257,6 +309,10 @@ export interface AuditVerifyResponse {
 export interface UsersResponse {
   users: AdminUserDto[];
   rolePermissions: Record<AdminRole, Permission[]>;
+}
+
+export interface RevokeSessionRequest {
+  reason: string;
 }
 
 export interface CreateUserRequest {

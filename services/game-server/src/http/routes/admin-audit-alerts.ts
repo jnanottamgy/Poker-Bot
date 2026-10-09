@@ -37,7 +37,8 @@ export function registerAuditAndAlertRoutes(app: FastifyInstance, ctx: HttpConte
 
   app.get('/api/admin/audit.csv', async (req, reply) => {
     const q = auditQuery.parse({ ...(req.query as object), limit: 1000 });
-    await requireAdmin(ctx, req, 'EXPORT_DATA', q.tournamentId ?? null);
+    // Same permission as the JSON log (docs/API.md): the CSV is the same data, paged through in full.
+    await requireAdmin(ctx, req, 'AUDIT_VIEW', q.tournamentId ?? null);
     const rows: unknown[][] = [];
     let beforeSeq = q.beforeSeq;
     // Page through the whole log (bounded to 100k rows per export).

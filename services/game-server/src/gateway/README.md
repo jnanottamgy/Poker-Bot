@@ -16,6 +16,7 @@ reconnect always starts from an authoritative snapshot.
 | `presence.ts` | `PresenceStore` (controller keys): memory and Redis implementations |
 | `hub.ts` | Reference-counted bus subscriptions (one per channel per node) |
 | `delay.ts` | Per-tournament FIFO delay line for spectator/display frames |
+| `display.ts` | Admin scene switch (`DISPLAY_SCENE`) forwarded to DISPLAY sockets as `display_scene` |
 | `protocol.ts` | zod validation of client frames |
 | `origin.ts` | Cross-site WebSocket hijacking check |
 | `options.ts` | Tunables and close codes |
@@ -230,10 +231,18 @@ Additive changes to `runtime/contracts.ts` (the runtime must implement/publish t
   follow the tournament (`features.broadcastDisplay`).
 - `DisplayFeaturedMessage` (`DISPLAY_FEATURED_CHANGED`) on
   `tournament:{id}:events` (`TournamentChannelMessage`) — the admin display
-  endpoint publishes it; displays are re-pointed. The featured table is also
+  endpoint publishes it; displays are re-pointed. `tableId: null` means
+  "automatic": the gateway asks `featuredTable()` (final table or first open
+  table) instead of pointing displays at no table. The featured table is also
   re-queried after `FINAL_TABLE_FORMED`, `TABLE_BROKEN` and `TABLE_CREATED`.
 - `AdminChannelMessage` `HOLE_CARDS_REVEALED {tableId, adminId, sessionId}` —
   published by the audited reveal endpoint.
+- `DISPLAY_SCENE {tournamentId, scene, tableId}` on `tournament:{id}:events`
+  (published by the admin display endpoint) is forwarded to the tournament's
+  DISPLAY sockets only, immediately (no spectator delay: no game data), as the
+  additive frame `{ t: 'display_scene', st, scene, tableId }` (`display.ts`).
+  It is not yet part of the shared `ServerMessage` union; clients that do not
+  know it ignore it. Malformed messages (scene > 40 chars) are dropped.
 
 Interpretations:
 

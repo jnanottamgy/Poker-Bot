@@ -18,6 +18,8 @@ import { Connection } from './connection';
 import type { GatewayPrincipal } from './connection';
 import { ControllerManager } from './controller';
 import { DelayQueue } from './delay';
+import { displaySceneFrame, isDisplaySceneMessage } from './display';
+import type { DisplaySceneBusMessage } from './display';
 import { SubscriptionHub } from './hub';
 import { CLOSE_CODES, resolveGatewayOptions } from './options';
 import type { GatewayOptions } from './options';
@@ -820,6 +822,7 @@ export class Gateway {
     if (!message || typeof message !== 'object') return;
     const kind = (message as { kind?: unknown }).kind;
     if (channel.startsWith('table:') && kind === 'TABLE_UPDATE') return this.onTableUpdate(message as TableUpdateMessage);
+    if (channel.startsWith('tournament:') && kind === 'DISPLAY_SCENE') return this.onDisplayScene(message);
     if (channel.startsWith('tournament:')) return this.onTournamentMessage(message as TournamentChannelMessage);
     if (channel.startsWith('player:')) return this.onPlayerMessage(channel.slice('player:'.length), message as PlayerChannelMessage);
     if (channel.startsWith('admin:')) return this.onAdminMessage(channel.slice('admin:'.length), message as AdminChannelMessage);
@@ -856,7 +859,8 @@ export class Gateway {
 
   private onTournamentMessage(msg: TournamentChannelMessage): void {
     if (msg.kind === 'DISPLAY_FEATURED_CHANGED') {
-      void this.refreshFeatured(msg.tournamentId, msg.tableId).catch((err: unknown) => this.fail(err, { area: 'display' }));
+      // tableId null = "automatic" (the director's choice: final table or first open table), not "no table".
+      void this.refreshFeatured(msg.tournamentId, msg.tableId ?? undefined).catch((err: unknown) => this.fail(err, { area: 'display' }));
       return;
     }
     if (msg.kind !== 'TOURNAMENT_EVENT') return;
@@ -877,6 +881,16 @@ export class Gateway {
     }
     if (FEATURED_TRIGGERS.has(msg.envelope.event.kind)) {
       void this.refreshFeatured(msg.tournamentId).catch((err: unknown) => this.fail(err, { area: 'display' }));
+    }
+  }
+
+  /** Admin scene switch: forwarded to this tournament's DISPLAY sockets only (see display.ts). */
+  private onDisplayScene(message: unknown): void {
+    if (!isDisplaySceneMessage(message)) return;
+    const msg: DisplaySceneBusMessage = message;
+    const f = displaySceneFrame(msg, this.now());
+    for (const c of this.byTournament.get(msg.tournamentId) ?? []) {
+      if (c.audience === 'DISPLAY' && c.ready) c.send(f);
     }
   }
 

@@ -31,17 +31,21 @@ export function bannerFor(e: TournamentEventEnvelope): Banner | null {
 /** Milestones (gold), announcements and blind changes — each shown once, then auto-hidden. */
 export function EventBanners({ client }: { client: JpbClient }) {
   const events = useGameState(client, (s) => s.tournamentEvents);
-  const seen = useRef(new Set<number>());
+  // Events already in the store when this mounts were shown before (or are stale): the
+  // layer unmounts behind device screens, and remounting must not replay old banners.
+  const seen = useRef<Set<number> | null>(null);
+  seen.current ??= new Set(events.map((e) => e.seq));
   const [banner, setBanner] = useState<Banner | null>(null);
   const toast = useToast();
 
   useEffect(() => {
     for (const e of events) {
-      if (seen.current.has(e.seq)) continue;
-      seen.current.add(e.seq);
+      if (seen.current?.has(e.seq)) continue;
+      seen.current?.add(e.seq);
       const b = bannerFor(e);
       if (b) setBanner(b);
-      if (e.event.kind === 'BLIND_LEVEL_CHANGED') {
+      // The first level (from null) is the start of play, not "blinds up".
+      if (e.event.kind === 'BLIND_LEVEL_CHANGED' && e.event.from !== null) {
         const l = e.event.to;
         toast.push({ tone: 'info', title: `Blinds up · Level ${l.level}`, description: `${formatChips(l.smallBlind)} / ${formatChips(l.bigBlind)}${l.ante ? ` · ante ${formatChips(l.ante)}` : ''} from your next hand` });
       }

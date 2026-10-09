@@ -11,7 +11,7 @@ import type {
   TournamentFairnessDto,
   TournamentReportDto,
 } from '@jpb/shared-types';
-import { buildVerificationBundle, redactHandFairnessRecord } from '@jpb/fairness-engine';
+import { buildVerificationBundle, clientSeedProblem, computePublicEntropy, redactHandFairnessRecord } from '@jpb/fairness-engine';
 import type { HandHistoryRecord } from '@jpb/table-engine';
 import type { DirectorTable } from '@jpb/tournament-engine';
 import { requireAdmin } from '../context';
@@ -194,13 +194,16 @@ export function registerAdminHandRoutes(app: FastifyInstance, deps: GameRouteDep
       `SELECT history FROM hands WHERE tournament_id = $1 ORDER BY completed_at, id OFFSET $2 LIMIT $3`,
       [tournament.id, from, span],
     );
-    const seeds = await ctx.store.repos.players.listClientSeeds(tournament.id);
+    const publicEntropy = tournament.publicEntropy ?? '';
+    // START used the valid client seeds plus the director's optional admin entropy, which is not stored:
+    // the inputs are published only when they re-derive the frozen public entropy (null otherwise, never a 500).
+    const inputs = { clientSeeds: (await ctx.store.repos.players.listClientSeeds(tournament.id)).filter((s) => clientSeedProblem(s) === null), adminEntropy: null };
     return buildVerificationBundle({
       tournamentId: tournament.id,
       serverSeedHash: tournament.serverSeedHash,
       serverSeed: tournament.serverSeedRevealed,
-      publicEntropy: tournament.publicEntropy ?? '',
-      entropyInputs: { clientSeeds: seeds, adminEntropy: null },
+      publicEntropy,
+      entropyInputs: computePublicEntropy(inputs) === publicEntropy ? inputs : null,
       hands: rows.rows.map((r) => handFairness(tournament, r.history)),
     });
   });
