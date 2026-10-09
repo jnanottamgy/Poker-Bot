@@ -15,3 +15,6 @@ coverage/
 # Generated screenshots (regenerate with the screenshot scripts)
 packages/ui/gallery/screenshots/
 apps/*/screenshots/
+
+# Desktop app installers
+apps/desktop/release/
