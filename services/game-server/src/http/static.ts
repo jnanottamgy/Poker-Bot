@@ -41,7 +41,7 @@ export function staticApps(staticDir: string): StaticApps {
           root: join(staticDir, a.dir),
           prefix: a.prefix,
           decorateReply: false,
-          index: false,
+          index: 'index.html',
           wildcard: true,
           setHeaders: (res, path) => {
             if (/[.-][A-Za-z0-9_-]{8,}\.(js|css|woff2?|png|svg|webp|jpg)$/.test(path)) res.header('Cache-Control', 'public, max-age=31536000, immutable');
