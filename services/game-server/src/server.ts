@@ -84,7 +84,7 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
     throw new Error('DATABASE_URL is required: PostgreSQL is the source of truth (crash recovery, audit, history). Start it with `docker compose up -d postgres`.');
   }
   const db = opts.db ?? new Database(env.databaseUrl!, env.databasePoolMax);
-  if (!opts.skipMigrations) await migrate(db);
+  if (!opts.skipMigrations) await migrate(db, env.migrationsDir ?? undefined);
   const store = new Store(db);
   const redis = env.redisUrl ? new Redis(env.redisUrl, { maxRetriesPerRequest: 3 }) : null;
   const bus = opts.bus ?? (env.redisUrl ? new RedisBus(env.redisUrl) : new LocalBus({ isolation: env.nodeEnv === 'test' ? 'freeze' : 'none' }));
@@ -128,6 +128,7 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
         sessions: ctx.sessions,
         metrics,
         presence: redis ? new RedisPresenceStore(redis, `${opts.redisPrefix ?? 'jpb:'}presence:`) : new MemoryPresenceStore(),
+        ...(env.extraAllowedOrigins.length ? { options: { extraAllowedOrigins: env.extraAllowedOrigins } } : {}),
         log: { warn: (o, m) => logRef.current?.warn(o as object, m ?? ''), error: (o, m) => logRef.current?.error(o as object, m ?? '') },
       })
     : null;

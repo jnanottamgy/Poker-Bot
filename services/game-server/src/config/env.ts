@@ -47,6 +47,14 @@ const envSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(48),
   ADMIN_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(72).default(12),
   STATIC_DIR: z.string().optional(),
+  /** Directory of the *.sql migrations (default: the package's migrations/; packaged apps ship them elsewhere). */
+  MIGRATIONS_DIR: z.string().min(1).optional(),
+  /**
+   * Comma-separated extra browser origins allowed to open WebSockets besides
+   * PUBLIC_BASE_URL's (e.g. the desktop app's own window on http://127.0.0.1:PORT
+   * while players use the LAN address).
+   */
+  EXTRA_ALLOWED_ORIGINS: z.string().optional(),
   /** Multiplies every rate limit (load testing from one IP). Ignored in production. */
   RATE_LIMIT_SCALE: z.coerce.number().min(1).max(100_000).default(1),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -76,6 +84,8 @@ export interface ServerEnv {
   sessionTtlMs: number;
   adminSessionTtlMs: number;
   staticDir: string | null;
+  migrationsDir: string | null;
+  extraAllowedOrigins: string[];
   rateLimitScale: number;
   logLevel: string;
 }
@@ -135,7 +145,27 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     sessionTtlMs: e.SESSION_TTL_HOURS * 3_600_000,
     adminSessionTtlMs: e.ADMIN_SESSION_TTL_HOURS * 3_600_000,
     staticDir: e.STATIC_DIR ?? null,
+    migrationsDir: e.MIGRATIONS_DIR ?? null,
+    extraAllowedOrigins: parseOrigins(e.EXTRA_ALLOWED_ORIGINS),
     rateLimitScale: production ? 1 : e.RATE_LIMIT_SCALE,
     logLevel: e.LOG_LEVEL,
   };
+}
+
+function parseOrigins(value: string | undefined): string[] {
+  if (!value) return [];
+  const out: string[] = [];
+  for (const raw of value.split(',')) {
+    const v = raw.trim();
+    if (!v) continue;
+    let url: URL;
+    try {
+      url = new URL(v);
+    } catch {
+      throw new EnvError(`EXTRA_ALLOWED_ORIGINS: "${v}" is not a URL`);
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new EnvError(`EXTRA_ALLOWED_ORIGINS: "${v}" must be http(s)`);
+    out.push(url.origin);
+  }
+  return out;
 }

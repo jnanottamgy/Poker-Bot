@@ -65,3 +65,17 @@ describe('env LAN mode', () => {
     expect(lan.insecureLanHttp).toBe(true);
   });
 });
+
+describe('env for packaged apps', () => {
+  it('reads the migrations directory and extra WebSocket origins', () => {
+    const env = loadEnv({ MIGRATIONS_DIR: '/opt/app/migrations', EXTRA_ALLOWED_ORIGINS: 'http://127.0.0.1:8080, http://localhost:8080/admin/' });
+    expect(env.migrationsDir).toBe('/opt/app/migrations');
+    expect(env.extraAllowedOrigins).toEqual(['http://127.0.0.1:8080', 'http://localhost:8080']);
+    expect(loadEnv({}).extraAllowedOrigins).toEqual([]);
+    expect(loadEnv({}).migrationsDir).toBeNull();
+  });
+  it('refuses malformed extra origins', () => {
+    expect(() => loadEnv({ EXTRA_ALLOWED_ORIGINS: 'not a url' })).toThrow(EnvError);
+    expect(() => loadEnv({ EXTRA_ALLOWED_ORIGINS: 'ftp://x' })).toThrow(EnvError);
+  });
+});
