@@ -39,6 +39,9 @@ one database. CI (`.github/workflows/ci.yml`) runs everything with PostgreSQL
 | Gateway | `services/game-server/test/gateway-*.test.ts` | Authentication on upgrade, audiences, privacy of hole cards, controller takeover, spectator delay, slow consumers |
 | Game runtime | `services/game-server/test/game-runtime.test.ts` | Tournaments on PostgreSQL through the durable outbox; every hand verified against the revealed seed; restarts mid-tournament |
 | End to end | `services/game-server/test/e2e-http.test.ts` | Admin login, CSRF, create, register, WebSocket play to a champion, payouts, CSV, hand history, report, seed reveal, public verification, audit chain |
+| Admin API contract | `tests/integration/admin-api-contract.test.ts` | The admin control room's own typed client against the real server: every registry endpoint answered with exactly the client type's fields; the registry and docs/API.md list the same endpoints and permissions |
+| Player in a browser | `tests/e2e/player-browser.test.ts` | A phone browser joins, registers, plays an action, survives a reload and hands over to a second device with the rejoin code |
+| Johnny under load | `services/game-server/test/director-actor.test.ts` | Table reports coalesced into one director command behave exactly like the same reports one by one; re-delivery never applies one twice |
 | Chaos | `tests/chaos` | Process crash + restart; PostgreSQL backends killed repeatedly; injected database latency; a 5 s Redis outage under a two-node cluster; a cluster losing the node that hosts Johnny |
 | Load | `tests/load` | Real HTTP registrations and one WebSocket per player; latency percentiles and throughput |
 | UI | `packages/ui/test`, `apps/*/test` | Components, formatting, screens (jsdom) |
@@ -65,6 +68,11 @@ one database. CI (`.github/workflows/ci.yml`) runs everything with PostgreSQL
   Johnny and the tables from their logs (with the determinism check on),
   re-arms timers, delivers the dead node's pending outbox messages, accepts
   the reconnecting players and finishes the tournament.
+
+Simulation with shove-heavy bots (whole tables busting in one hand) found a
+liveness bug: a field that dropped straight onto the bubble could end with
+the last players alone at separate tables. It is fixed, the stalled seeds
+are regression tests, and a property test runs 150 such fields per run.
 
 These tests found two real bugs that are now fixed: a shutdown that hung
 forever while clients kept reconnecting (late WebSocket upgrades were never
