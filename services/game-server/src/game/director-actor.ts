@@ -63,6 +63,8 @@ export type DirectorActorCommand =
   | { kind: 'CREATE'; input: CreateDirectorInput }
   | { kind: 'INPUT'; input: DirectorInput; audit?: AuditMeta }
   | { kind: 'REPORT'; tableId: string; rseq: number; input: DirectorInput }
+  /** Reports from many tables applied in order in one command (and one transaction): see OutboxDispatcher. */
+  | { kind: 'REPORTS'; reports: Array<{ tableId: string; rseq: number; input: DirectorInput }> }
   | { kind: 'TICK' }
   | { kind: 'QUERY'; query: DirectorQuery };
 
@@ -105,22 +107,45 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
       });
     }
     if (!state.director) return noopResult(state, { ok: false, code: 'NOT_CREATED', message: 'Tournament director not initialized.' });
-    if (c.kind === 'REPORT') {
-      const last = bmGet(state.reportSeqs, c.tableId) ?? 0;
-      if (c.rseq <= last) return noopResult(state, { ...OK, duplicate: true });
-      return reduce(state, env, c.input, null, { tableId: c.tableId, rseq: c.rseq });
+    const b = newBatch(state);
+    if (c.kind === 'REPORT' || c.kind === 'REPORTS') {
+      // Reports already applied (re-delivery after a lost acknowledgement) are skipped one by one.
+      for (const r of c.kind === 'REPORT' ? [c] : c.reports) {
+        if (r.rseq <= (bmGet(b.state.reportSeqs, r.tableId) ?? 0)) continue;
+        apply(b, env, r.input, { tableId: r.tableId, rseq: r.rseq });
+      }
+      if (!b.changed) return noopResult(state, { ...OK, duplicate: true });
+      return finish(b, env, OK, null);
     }
     const input: DirectorInput = c.kind === 'TICK' ? { type: 'TICK' } : c.input;
-    return reduce(state, env, input, c.kind === 'INPUT' ? (c.audit ?? null) : null, null);
+    const reply = apply(b, env, input, null);
+    if (!reply.ok) return noopResult(state, reply);
+    return finish(b, env, OK, c.kind === 'INPUT' ? (c.audit ?? null) : null);
   }
 
-  function reduce(
-    state: DirectorActorState,
-    env: ActorEnvelope<DirectorActorCommand>,
-    input: DirectorInput,
-    audit: AuditMeta | null,
-    report: { tableId: string; rseq: number } | null,
-  ): StepResult<DirectorActorState, DirectorActorReply> {
+  /** Accumulated effects of one or more director inputs applied in order within one command. */
+  interface Batch {
+    first: DirectorActorState;
+    state: DirectorActorState;
+    changed: boolean;
+    events: TournamentEvent[];
+    envelopes: TournamentEventEnvelope[];
+    toTables: Array<{ targetKind: string; targetId: string; payload: ToTable }>;
+    notices: OutboxMessage[];
+    /** Net TICK timer directive of the whole batch (the last one wins). */
+    tick: { at: number | null } | null;
+    changedPlayers: Set<string>;
+    alerts: Array<Extract<DirectorEffect, { type: 'INTEGRITY_ALERT' }>>;
+    createdTables: Array<Extract<DirectorEffect, { type: 'CREATE_TABLE' }>>;
+  }
+
+  function newBatch(state: DirectorActorState): Batch {
+    return { first: state, state, changed: false, events: [], envelopes: [], toTables: [], notices: [], tick: null, changedPlayers: new Set(), alerts: [], createdTables: [] };
+  }
+
+  /** Applies one input to the batch. A rejected input changes nothing, except that a report still advances its dedupe mark. */
+  function apply(b: Batch, env: ActorEnvelope<DirectorActorCommand>, input: DirectorInput, report: { tableId: string; rseq: number } | null): DirectorReply {
+    const state = b.state;
     const before = state.director!;
     const index = indexFor(before);
     let tr;
@@ -136,35 +161,29 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
     }
     if (!tr.reply.ok) {
       indexes.delete(before);
-      // A rejected report still advances the dedupe mark so it is never re-applied.
-      if (report) return stepResult({ ...state, reportSeqs: bmSet(state.reportSeqs, report.tableId, report.rseq) }, tr.reply);
-      return noopResult(state, tr.reply);
+      if (report) {
+        b.state = { ...state, reportSeqs: bmSet(state.reportSeqs, report.tableId, report.rseq) };
+        b.changed = true;
+      }
+      return tr.reply;
     }
     const director = tr.state;
     indexes.delete(before);
     indexes.set(director, index);
 
     let eventSeq = state.eventSeq;
-    const envelopes: TournamentEventEnvelope[] = tr.events.map((event) => ({ tournamentId: state.tournamentId, seq: ++eventSeq, at: env.at, event }));
-    const next: DirectorActorState = {
-      ...state,
-      director,
-      eventSeq,
-      reportSeqs: report ? bmSet(state.reportSeqs, report.tableId, report.rseq) : state.reportSeqs,
-    };
+    for (const event of tr.events) {
+      b.envelopes.push({ tournamentId: state.tournamentId, seq: ++eventSeq, at: env.at, event });
+      b.events.push(event);
+    }
+    b.state = { ...state, director, eventSeq, reportSeqs: report ? bmSet(state.reportSeqs, report.tableId, report.rseq) : state.reportSeqs };
+    b.changed = true;
 
-    const toTables: Array<{ targetKind: string; targetId: string; payload: ToTable }> = [];
-    const bus: OutboxMessage[] = [];
-    const timers: TimerRequest[] = [];
-    const cancelTimers: string[] = [];
-    const changedPlayers: string[] = [];
-    const alerts: Array<Extract<DirectorEffect, { type: 'INTEGRITY_ALERT' }>> = [];
-    const createdTables: Array<Extract<DirectorEffect, { type: 'CREATE_TABLE' }>> = [];
     for (const e of tr.effects) {
       switch (e.type) {
         case 'CREATE_TABLE':
-          createdTables.push(e);
-          toTables.push({
+          b.createdTables.push(e);
+          b.toTables.push({
             targetKind: 'table',
             targetId: e.tableId,
             payload: {
@@ -180,42 +199,58 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
           break;
         case 'TABLE_COMMAND': {
           const dseq = Number(e.key.slice(e.key.lastIndexOf(':E') + 2));
-          toTables.push({ targetKind: 'table', targetId: e.tableId, payload: { dseq, command: e.command } });
+          b.toTables.push({ targetKind: 'table', targetId: e.tableId, payload: { dseq, command: e.command } });
           break;
         }
         case 'NOTIFY_PLAYER':
-          bus.push({ channel: channels.player(e.playerId), message: { kind: 'NOTICE', notice: e.notice } satisfies PlayerChannelMessage });
+          b.notices.push({ channel: channels.player(e.playerId), message: { kind: 'NOTICE', notice: e.notice } satisfies PlayerChannelMessage });
           break;
         case 'SCHEDULE_TICK':
-          if (e.at === null) cancelTimers.push('TICK');
-          else timers.push({ key: 'TICK', at: e.at, token: String(e.at) });
+          b.tick = { at: e.at };
           break;
         case 'INTEGRITY_ALERT':
-          alerts.push(e);
+          b.alerts.push(e);
           break;
         case 'PLAYER_CHANGED':
-          changedPlayers.push(e.player.playerId);
+          b.changedPlayers.add(e.player.playerId);
           break;
       }
     }
+    return tr.reply;
+  }
+
+  /** One state transition, one transaction and one set of messages for everything the batch did. */
+  function finish(b: Batch, env: ActorEnvelope<DirectorActorCommand>, reply: DirectorActorReply, audit: AuditMeta | null): StepResult<DirectorActorState, DirectorActorReply> {
+    const state = b.first;
+    const before = state.director!;
+    const director = b.state.director!;
+    const timers: TimerRequest[] = [];
+    const cancelTimers: string[] = [];
+    if (b.tick) {
+      if (b.tick.at === null) cancelTimers.push('TICK');
+      else timers.push({ key: 'TICK', at: b.tick.at, token: String(b.tick.at) });
+    }
+    const bus: OutboxMessage[] = [...b.notices];
+    const changedPlayers = [...b.changedPlayers];
     for (const pid of changedPlayers) {
       const self = playerSelf(director, pid);
       if (self) bus.push({ channel: channels.player(pid), message: { kind: 'SELF_UPDATE', self } satisfies PlayerChannelMessage });
     }
-    const summary = envelopes.length ? tournamentSummary(director, eventSeq) : null;
-    for (const envelope of envelopes) {
+    const summary = b.envelopes.length ? tournamentSummary(director, b.state.eventSeq) : null;
+    for (const envelope of b.envelopes) {
       bus.push({ channel: channels.tournamentEvents(state.tournamentId), message: { kind: 'TOURNAMENT_EVENT', tournamentId: state.tournamentId, envelope, summary: summary! } satisfies TournamentEventMessage });
     }
-    for (const a of alerts) bus.push({ channel: channels.admin(state.tournamentId), message: { kind: 'ALERT', alert: a } });
-    if (toTables.length) bus.push({ channel: OUTBOX_KICK_CHANNEL, message: { sourceKind: 'director', sourceId: state.tournamentId } });
+    for (const a of b.alerts) bus.push({ channel: channels.admin(state.tournamentId), message: { kind: 'ALERT', alert: a } });
+    if (b.toTables.length) bus.push({ channel: OUTBOX_KICK_CHANNEL, message: { sourceKind: 'director', sourceId: state.tournamentId } });
 
+    const { createdTables, toTables, events, alerts } = b;
     const projection = async (repos: Repos) => {
       for (const t of createdTables) {
         await repos.tableLogs.createTable({ id: t.tableId, tournamentId: state.tournamentId, tableNumber: t.tableNumber, maxSeats: t.maxSeats, status: 'WAITING', isFinalTable: t.isFinalTable });
       }
       if (toTables.length) await repos.outbox.add('director', state.tournamentId, toTables);
       await projectPlayers(repos, director, changedPlayers);
-      await projectEvents(repos, state.tournamentId, director, tr.events, env.at);
+      await projectEvents(repos, state.tournamentId, director, events, env.at);
       if (before.counters !== director.counters || before.status !== director.status) {
         await repos.tournaments.setCounters(state.tournamentId, {
           registered: director.counters.registered,
@@ -243,14 +278,14 @@ export function createDirectorActorDefinition(deps: DirectorActorDeps): ActorDef
           target: audit.target,
           reason: audit.reason,
           beforeState: auditSnapshot(before),
-          afterState: { ...auditSnapshot(director), input },
+          afterState: { ...auditSnapshot(director), input: env.command.kind === 'INPUT' ? env.command.input : null },
           ip: audit.ip,
         });
       }
     };
 
-    return stepResult(next, OK, {
-      events: envelopes.map((e) => ({ seq: e.seq, version: e.seq, at: e.at, kind: e.event.kind, visibility: 'PUBLIC', privateTo: null, payload: e.event })),
+    return stepResult(b.state, reply, {
+      events: b.envelopes.map((e) => ({ seq: e.seq, version: e.seq, at: e.at, kind: e.event.kind, visibility: 'PUBLIC', privateTo: null, payload: e.event })),
       timers,
       cancelTimers,
       outbox: bus,
@@ -342,8 +377,10 @@ async function projectPlayers(repos: Repos, d: DirectorState, playerIds: string[
   if (rows.length) await repos.players.updateEntryStates(rows);
 }
 
-/** Status, eliminations, movements and completion projections from tournament events. */
+/** Status, eliminations, movements and completion projections from tournament events (multi-row inserts). */
 async function projectEvents(repos: Repos, tournamentId: string, d: DirectorState, events: TournamentEvent[], at: number): Promise<void> {
+  const eliminations: unknown[][] = [];
+  const movements: unknown[][] = [];
   for (const e of events) {
     switch (e.kind) {
       case 'TOURNAMENT_STATUS_CHANGED':
@@ -355,30 +392,61 @@ async function projectEvents(repos: Repos, tournamentId: string, d: DirectorStat
         break;
       case 'PLAYER_ELIMINATED': {
         const r = e.record;
-        await repos.q.query(
-          `INSERT INTO eliminations (tournament_id, entry_id, player_id, finish_position, tied_count, eliminated_at, hand_id, hand_number, table_id, batch_id, starting_stack_of_hand, reason)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-           ON CONFLICT (tournament_id, entry_id) DO UPDATE SET finish_position = EXCLUDED.finish_position, tied_count = EXCLUDED.tied_count`,
-          [tournamentId, r.entryId, r.playerId, Math.max(1, r.finishPosition || 1), r.tiedCount, r.eliminatedAt, r.handId || null, r.handNumber || null, r.tableId, r.batchId, r.startingStackOfHand, r.handId ? 'BUSTED' : 'DISQUALIFIED'],
-        );
+        eliminations.push([tournamentId, r.entryId, r.playerId, Math.max(1, r.finishPosition || 1), r.tiedCount, r.eliminatedAt, r.handId || null, r.handNumber || null, r.tableId, r.batchId, r.startingStackOfHand, r.handId ? 'BUSTED' : 'DISQUALIFIED']);
         break;
       }
       case 'TABLE_MOVE': {
         const m = e.movement;
-        await repos.q.query(
-          `INSERT INTO player_movements (id, tournament_id, player_id, reason, from_table_id, from_seat, to_table_id, to_seat, stack, requested_at, completed_at, score_breakdown)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING`,
-          [m.moveId, tournamentId, m.playerId, m.reason, m.fromTableId, m.fromSeat, m.toTableId, m.toSeat, m.stack, m.requestedAt, m.completedAt, m.scoreBreakdown ? JSON.stringify(m.scoreBreakdown) : null],
-        );
+        movements.push([m.moveId, tournamentId, m.playerId, m.reason, m.fromTableId, m.fromSeat, m.toTableId, m.toSeat, m.stack, m.requestedAt, m.completedAt, m.scoreBreakdown ? JSON.stringify(m.scoreBreakdown) : null]);
         break;
       }
-      case 'TOURNAMENT_COMPLETED':
-        await repos.tournaments.setWinner(tournamentId, e.winnerId);
-        await projectPlayers(repos, d, bmValues(d.players).filter((p) => p.finishPosition !== null).map((p) => p.playerId).slice(0, 10_000));
-        break;
       default:
         break;
     }
   }
+  // Later rows for the same key win (a re-ranked elimination), as with one statement per event.
+  for (const rows of chunks(dedupeLast(eliminations, (r) => String(r[1])), 400)) {
+    await repos.q.query(
+      `INSERT INTO eliminations (tournament_id, entry_id, player_id, finish_position, tied_count, eliminated_at, hand_id, hand_number, table_id, batch_id, starting_stack_of_hand, reason)
+       VALUES ${valuesList(rows.length, 12)}
+       ON CONFLICT (tournament_id, entry_id) DO UPDATE SET finish_position = EXCLUDED.finish_position, tied_count = EXCLUDED.tied_count`,
+      rows.flat(),
+    );
+  }
+  for (const rows of chunks(dedupeLast(movements, (r) => String(r[0])), 400)) {
+    await repos.q.query(
+      `INSERT INTO player_movements (id, tournament_id, player_id, reason, from_table_id, from_seat, to_table_id, to_seat, stack, requested_at, completed_at, score_breakdown)
+       VALUES ${valuesList(rows.length, 12)} ON CONFLICT (id) DO NOTHING`,
+      rows.flat(),
+    );
+  }
+  for (const e of events) {
+    if (e.kind !== 'TOURNAMENT_COMPLETED') continue;
+    await repos.tournaments.setWinner(tournamentId, e.winnerId);
+    await projectPlayers(repos, d, bmValues(d.players).filter((p) => p.finishPosition !== null).map((p) => p.playerId).slice(0, 10_000));
+  }
   void at;
+}
+
+function valuesList(rows: number, cols: number): string {
+  const out: string[] = [];
+  for (let r = 0; r < rows; r++) out.push(`(${Array.from({ length: cols }, (_, c) => `$${r * cols + c + 1}`).join(',')})`);
+  return out.join(',');
+}
+
+function chunks<T>(list: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+/** Keeps the last row per key (a multi-row upsert may touch each key only once). */
+function dedupeLast<T>(rows: T[], key: (row: T) => string): T[] {
+  const byKey = new Map<string, T>();
+  for (const r of rows) {
+    const k = key(r);
+    byKey.delete(k);
+    byKey.set(k, r);
+  }
+  return [...byKey.values()];
 }

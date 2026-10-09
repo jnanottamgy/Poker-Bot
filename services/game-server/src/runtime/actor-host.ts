@@ -150,6 +150,8 @@ interface ActorRecord {
   lease: Lease | null;
   /** Monotonic instant until which the lease may be used: request sent + ttl - safety. */
   leaseValidUntil: number;
+  /** A renewal request is outstanding (at most one per actor, however long the store takes). */
+  renewing: boolean;
   /** The last unit of work failed ambiguously: the log may already hold seq + 1. */
   suspect: boolean;
   retryTimer: ClockTimer | null;
@@ -318,6 +320,7 @@ export class ActorHost {
       lastSnapshotSeq: 0,
       lease: null,
       leaseValidUntil: 0,
+      renewing: false,
       suspect: false,
       retryTimer: null,
       lastActivity: this.clock.monotonic(),
@@ -512,14 +515,18 @@ export class ActorHost {
     for (const job of rec.queue.drainAll()) job.reject(error);
     const done = (async () => {
       await this.waitDrained(rec);
-      await rec.unsubscribe?.().catch(() => undefined);
+      // Bounded: with the bus or lease store unreachable, retiring (and node shutdown) must
+      // still finish — an unreleased lease simply expires.
+      await this.bounded(rec.unsubscribe?.() ?? Promise.resolve());
       if (rec.lease) {
-        try {
-          await this.opts.leases.release(rec.lease);
-          await this.opts.bus.publish(LEASE_RELEASED_CHANNEL, { resource: rec.address });
-        } catch (err) {
-          this.logger.warn({ address: rec.address, err: errMessage(err) }, 'lease release failed (it will expire)');
-        }
+        const lease = rec.lease;
+        const released = await this.bounded(
+          (async () => {
+            await this.opts.leases.release(lease);
+            await this.opts.bus.publish(LEASE_RELEASED_CHANNEL, { resource: rec.address });
+          })(),
+        );
+        if (released !== 'ok') this.logger.warn({ address: rec.address, err: released }, 'lease release failed (it will expire)');
       }
     })();
     this.retiring.set(rec.address, done);
@@ -538,6 +545,23 @@ export class ActorHost {
   private waitDrained(rec: ActorRecord): Promise<void> {
     if (!rec.running && (rec.queue.length === 0 || (rec.status !== 'active' && rec.status !== 'draining') || rec.retired)) return Promise.resolve();
     return new Promise((resolve) => rec.drainWaiters.push(resolve));
+  }
+
+  /** Settles with 'ok', the error message, or 'timed out' after one lease TTL — never rejects, never hangs. */
+  private bounded(p: Promise<unknown>): Promise<string> {
+    return new Promise((resolve) => {
+      const timer = this.clock.setTimeout(() => resolve('timed out'), this.ttlMs);
+      p.then(
+        () => {
+          this.clock.clearTimeout(timer);
+          resolve('ok');
+        },
+        (err: unknown) => {
+          this.clock.clearTimeout(timer);
+          resolve(errMessage(err));
+        },
+      );
+    });
   }
 
   private loseOwnership(rec: ActorRecord, reason: string): void {
@@ -570,29 +594,41 @@ export class ActorHost {
 
   /**
    * Renews every held lease. A refused renewal (another owner, or expired)
-   * stops the actor immediately. A renewal that errors (Redis unreachable)
-   * is retried next period while the lease is still locally valid; every
-   * command also checks local validity before it is processed.
+   * stops the actor immediately. A renewal that errors or never answers
+   * (Redis unreachable) is retried next period while the lease is still
+   * locally valid. Every period also stops each actor whose lease lapsed,
+   * whether or not commands arrive — and a hanging store never stalls this
+   * loop: it waits at most one period, one request per actor in flight.
    */
   async renewAll(): Promise<void> {
     const recs = [...this.records.values()].filter((r) => r.lease && !r.retired);
-    await Promise.all(
-      recs.map(async (rec) => {
-        const lease = rec.lease!;
-        try {
-          const sent = this.clock.monotonic();
-          const renewed = await this.opts.leases.renew(lease, this.ttlMs, this.clock.now());
-          if (rec.retired || rec.lease !== lease) return;
-          if (renewed) {
-            rec.lease = renewed;
-            rec.leaseValidUntil = this.validUntil(sent);
-          } else this.loseOwnership(rec, 'lease renewal refused');
-        } catch (err) {
-          this.logger.warn({ address: rec.address, err: errMessage(err) }, 'lease renewal error');
-          if (!rec.retired && !this.leaseValid(rec)) this.loseOwnership(rec, 'lease renewal failed and the lease is about to expire');
-        }
-      }),
-    );
+    for (const rec of recs) {
+      if (!this.leaseValid(rec)) this.loseOwnership(rec, 'lease expired: renewals went unanswered');
+    }
+    const renewals = recs.filter((r) => !r.retired && !r.renewing).map((rec) => this.renewOne(rec));
+    if (!renewals.length) return;
+    let timer: ClockTimer | null = null;
+    await Promise.race([Promise.all(renewals), new Promise<void>((resolve) => (timer = this.clock.setTimeout(resolve, this.renewMs)))]);
+    if (timer) this.clock.clearTimeout(timer);
+  }
+
+  private async renewOne(rec: ActorRecord): Promise<void> {
+    const lease = rec.lease!;
+    rec.renewing = true;
+    try {
+      const sent = this.clock.monotonic();
+      const renewed = await this.opts.leases.renew(lease, this.ttlMs, this.clock.now());
+      if (rec.retired || rec.lease !== lease) return;
+      if (renewed) {
+        rec.lease = renewed;
+        rec.leaseValidUntil = this.validUntil(sent);
+      } else this.loseOwnership(rec, 'lease renewal refused');
+    } catch (err) {
+      this.logger.warn({ address: rec.address, err: errMessage(err) }, 'lease renewal error');
+      if (!rec.retired && !this.leaseValid(rec)) this.loseOwnership(rec, 'lease renewal failed and the lease is about to expire');
+    } finally {
+      rec.renewing = false;
+    }
   }
 
   // ------------------------------------------------------------ commands
@@ -903,10 +939,11 @@ export class ActorHost {
    * command commits, so a reader never sees uncommitted state, and a client
    * that received a command's reply reads the state that includes it.
    */
-  async read(kind: string, actorId: string, query: unknown): Promise<unknown> {
+  async read(kind: string, actorId: string, query: unknown, opts: { signal?: AbortSignal } = {}): Promise<unknown> {
     const rec = this.records.get(actorAddress(kind, actorId));
     if (!rec) throw new ActorRuntimeError('NOT_OWNER', `${kind} ${actorId} is not hosted on ${this.nodeId}`);
-    if (rec.status === 'activating') await rec.activation;
+    // An activation can wait a long time (e.g. for a lease while Redis is unreachable): never past the caller's deadline.
+    if (rec.status === 'activating') await untilAborted(rec.activation, opts.signal);
     if (rec.retired || rec.status !== 'active' || !this.leaseValid(rec)) throw new ActorRuntimeError('NOT_OWNER', `${kind} ${actorId} is not active on ${this.nodeId}`);
     const def = rec.reg.definition;
     if (!def.read) throw new ActorRuntimeError('UNKNOWN_ACTOR_KIND', `${kind} has no read path`);
@@ -1028,6 +1065,26 @@ function bindDeadline(job: Job, signal: AbortSignal): void {
     signal.removeEventListener('abort', onAbort);
     reject(err);
   };
+}
+
+/** Resolves with `p`, or rejects UNAVAILABLE (not applied) as soon as `signal` aborts. */
+function untilAborted<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(deadlineError(false));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(deadlineError(false));
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (err: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      },
+    );
+  });
 }
 
 function deadlineError(started: boolean): ActorRuntimeError {

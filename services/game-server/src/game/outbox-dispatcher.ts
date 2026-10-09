@@ -41,7 +41,15 @@ export interface OutboxDispatcherOptions {
   pageSize?: number;
   /** Per-delivery deadline (default 15 s). */
   deliveryTimeoutMs?: number;
+  /** Most table reports coalesced into one director command (default 200). */
+  reportBatchMax?: number;
   metrics?: MetricsCatalog;
+}
+
+interface QueuedReport {
+  row: OutboxRow;
+  /** null when applied; otherwise the delivery error. */
+  resolve: (error: string | null) => void;
 }
 
 interface SourceState {
@@ -64,6 +72,8 @@ export class OutboxDispatcher {
   private sweeping: Promise<void> | null = null;
   private stopped = true;
   private readonly counters: OutboxStats = { delivered: 0, failures: 0, lastError: null, lastErrorAt: null, activeSources: 0 };
+  /** Per director: reports waiting to be coalesced into the next REPORTS command (one in flight at a time). */
+  private readonly reportQueues = new Map<string, { items: QueuedReport[]; running: boolean }>();
 
   constructor(private readonly opts: OutboxDispatcherOptions) {}
 
@@ -154,6 +164,7 @@ export class OutboxDispatcher {
 
   /** Delivers one target's rows in order; returns false at the first failure. */
   private async deliverChain(chain: OutboxRow[]): Promise<boolean> {
+    if (chain[0]?.targetKind === 'director') return this.deliverReports(chain);
     const delivered: number[] = [];
     let ok = true;
     for (const row of chain) {
@@ -174,18 +185,76 @@ export class OutboxDispatcher {
     return ok;
   }
 
+  /**
+   * Table reports to Johnny. Reports from every table hosted here are coalesced
+   * into REPORTS commands (one transaction for up to reportBatchMax reports)
+   * so the single director keeps up with thousands of tables. The chain is
+   * queued contiguously, batches run one at a time per director and a failed
+   * batch fails everything queued behind it, so per-table order always holds;
+   * re-delivered reports are skipped by the director (rseq).
+   */
+  private async deliverReports(chain: OutboxRow[]): Promise<boolean> {
+    const directorId = chain[0]!.targetId;
+    let q = this.reportQueues.get(directorId);
+    if (!q) {
+      q = { items: [], running: false };
+      this.reportQueues.set(directorId, q);
+    }
+    const results = chain.map((row) => new Promise<string | null>((resolve) => q.items.push({ row, resolve })));
+    if (!q.running) void this.flushReports(directorId, q);
+    const outcome = await Promise.all(results);
+    const firstFailure = outcome.findIndex((e) => e !== null);
+    const delivered = (firstFailure === -1 ? chain : chain.slice(0, firstFailure)).map((r) => r.id);
+    if (delivered.length) {
+      await this.opts.store.repos.outbox.remove(delivered);
+      this.counters.delivered += delivered.length;
+    }
+    if (firstFailure !== -1) {
+      const row = chain[firstFailure]!;
+      await this.opts.store.repos.outbox.recordFailure(row.id, outcome[firstFailure]!).catch(() => undefined);
+      return false;
+    }
+    return true;
+  }
+
+  private async flushReports(directorId: string, q: { items: QueuedReport[]; running: boolean }): Promise<void> {
+    q.running = true;
+    try {
+      while (q.items.length) {
+        const batch = q.items.splice(0, this.opts.reportBatchMax ?? 200);
+        const reports = batch.map(({ row }) => {
+          const p = row.payload as ToDirector;
+          return { tableId: p.tableId, rseq: p.rseq, input: p.input };
+        });
+        try {
+          await this.opts.node.submit('director', directorId, reports.length === 1 ? { kind: 'REPORT', ...reports[0]! } : { kind: 'REPORTS', reports }, { timeoutMs: this.opts.deliveryTimeoutMs ?? 15_000 });
+        } catch (err) {
+          this.noteError(err, `deliver ${batch.length} report(s) → director:${directorId}`);
+          const message = String((err as Error)?.message ?? err);
+          // Everything queued behind the failed batch fails too, so no table's reports overtake each other.
+          for (const item of [...batch, ...q.items.splice(0)]) item.resolve(message);
+          continue;
+        }
+        for (const item of batch) item.resolve(null);
+        if (this.opts.metrics) {
+          for (const r of reports) {
+            if (r.input.type !== 'TABLE_HAND_RESULT') continue;
+            this.opts.metrics.handsCompleted.inc();
+            this.opts.metrics.windows.handsPerMinute.record(Date.now());
+          }
+        }
+      }
+    } finally {
+      q.running = false;
+      if (!q.items.length) this.reportQueues.delete(directorId);
+    }
+  }
+
   private async deliver(row: OutboxRow): Promise<void> {
     const timeoutMs = this.opts.deliveryTimeoutMs ?? 15_000;
     if (row.targetKind === 'table') {
       const p = row.payload as ToTable;
       await this.opts.node.submit('table', row.targetId, { kind: 'DIRECTOR', dseq: p.dseq, command: p.command }, { timeoutMs });
-    } else if (row.targetKind === 'director') {
-      const p = row.payload as ToDirector;
-      await this.opts.node.submit('director', row.targetId, { kind: 'REPORT', tableId: p.tableId, rseq: p.rseq, input: p.input }, { timeoutMs });
-      if (p.input.type === 'TABLE_HAND_RESULT' && this.opts.metrics) {
-        this.opts.metrics.handsCompleted.inc();
-        this.opts.metrics.windows.handsPerMinute.record(Date.now());
-      }
     } else {
       throw new Error(`Unknown outbox target kind ${row.targetKind}`);
     }

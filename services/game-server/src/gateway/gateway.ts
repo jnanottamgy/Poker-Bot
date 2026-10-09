@@ -72,6 +72,10 @@ function isHighVolume(event: TournamentEventMessage['envelope']['event']): boole
   return HIGH_VOLUME_TOURNAMENT_EVENTS.has(event.kind) || (event.kind === 'MILESTONE' && event.code.startsWith('TABLES_'));
 }
 const SUMMARY_COALESCE_MS = 1000;
+/** Big fields refresh the coalesced summary less often: 1 s up to 2,000 players, then +0.5 s per 1,000, at most 10 s. */
+export function summaryIntervalMs(registered: number): number {
+  return Math.min(10_000, Math.max(SUMMARY_COALESCE_MS, Math.round(registered / 2)));
+}
 
 const NOOP_LOG: GatewayLogger = { warn: () => undefined, error: () => undefined };
 
@@ -891,7 +895,7 @@ export class Gateway {
 
   private readonly pendingSummaries = new Map<string, { summary: TournamentEventMessage['summary']; timer: NodeJS.Timeout }>();
 
-  /** At most one coalesced summary per tournament per SUMMARY_COALESCE_MS for players and spectators. */
+  /** At most one coalesced summary per tournament per summaryIntervalMs for players and spectators. */
   private scheduleSummary(tournamentId: string, summary: TournamentEventMessage['summary']): void {
     const pending = this.pendingSummaries.get(tournamentId);
     if (pending) {
@@ -904,7 +908,7 @@ export class Gateway {
       if (!p) return;
       const f = frame({ t: 'tournament_summary', st: this.now(), summary: p.summary });
       for (const c of this.byTournament.get(tournamentId) ?? []) if (c.audience === 'PLAYER' || c.audience === 'SPECTATOR') c.sendOrdered(f);
-    }, SUMMARY_COALESCE_MS);
+    }, summaryIntervalMs(summary.counters.registered));
     timer.unref?.();
     this.pendingSummaries.set(tournamentId, { summary, timer });
   }

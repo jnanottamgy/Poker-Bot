@@ -87,7 +87,7 @@ export async function buildServer(env: ServerEnv, opts: BuildServerOptions = {})
   if (!opts.skipMigrations) await migrate(db);
   const store = new Store(db);
   const redis = env.redisUrl ? new Redis(env.redisUrl, { maxRetriesPerRequest: 3 }) : null;
-  const bus = opts.bus ?? (env.redisUrl ? new RedisBus(env.redisUrl) : new LocalBus());
+  const bus = opts.bus ?? (env.redisUrl ? new RedisBus(env.redisUrl) : new LocalBus({ isolation: env.nodeEnv === 'test' ? 'freeze' : 'none' }));
 
   const registry = new MetricsRegistry();
   const metrics = createMetricsCatalog(registry);

@@ -342,6 +342,30 @@ describe.skipIf(!TEST_DATABASE_URL)('ActorHost on PostgreSQL', () => {
     await host.stop();
   });
 
+  it('stops an IDLE actor whose renewals hang (no command needed) and still shuts down', async () => {
+    const id = await fx.table('tbl_lease_idle');
+    const clock = new ManualClock();
+    const inner = new MemoryLeaseManager();
+    const hanging: LeaseManager = {
+      acquire: (...a) => inner.acquire(...a),
+      renew: () => new Promise(() => undefined),
+      release: () => new Promise(() => undefined),
+    };
+    const host = makeHost({ clock, leases: hanging });
+    await host.start();
+    await host.activate(KIND, id);
+    expect(await host.submit(KIND, id, open('a', 1))).toEqual({ ok: true, seq: 1 });
+    // No traffic at all: the renewal loop alone must notice the lease lapsing (ttl 10 s, safety 2 s).
+    for (let t = 0; t < TTL; t += RENEW) await clock.advance(RENEW);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(host.isHosted(KIND, id)).toBe(false);
+    await expect(host.read(KIND, id, {})).rejects.toMatchObject({ code: 'NOT_OWNER' });
+    // Releasing the lease never answers either: stopping waits at most one TTL for it.
+    const stopped = host.stop();
+    await clock.advance(TTL);
+    await stopped;
+  });
+
   it('stops processing when the lease cannot be renewed before it expires (renewals hanging)', async () => {
     const id = await fx.table('tbl_lease_hang');
     const clock = new ManualClock();

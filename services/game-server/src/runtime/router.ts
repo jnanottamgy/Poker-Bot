@@ -119,7 +119,7 @@ export class ActorRouter {
     // Fast path: nothing beyond the mailbox (or, for reads, nothing at all) when the actor lives here.
     if (host.isActive(kind, actorId)) {
       try {
-        return await (read ? host.read(kind, actorId, command) : host.submit(kind, actorId, command, { signal }));
+        return await (read ? host.read(kind, actorId, command, { signal }) : host.submit(kind, actorId, command, { signal }));
       } catch (err) {
         if (!isNotApplied(err)) throw err;
       }
@@ -141,7 +141,7 @@ export class ActorRouter {
   private async route(kind: string, actorId: string, command: unknown, deadline: number, signal: AbortSignal, read: boolean): Promise<unknown> {
     const host = this.opts.host;
     const status = host.statusOf(kind, actorId);
-    const local = () => (read ? host.read(kind, actorId, command) : host.submit(kind, actorId, command, { signal }));
+    const local = () => (read ? host.read(kind, actorId, command, { signal }) : host.submit(kind, actorId, command, { signal }));
     if (status === 'faulted' && read) throw new ActorRuntimeError('FAULTED', `${kind} ${actorId} is halted`);
     // 'activating' queues in the mailbox until the deadline; 'faulted' answers FAULTED immediately.
     if (status === 'active' || status === 'activating' || status === 'faulted') return local();

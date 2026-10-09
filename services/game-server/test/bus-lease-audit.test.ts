@@ -22,7 +22,13 @@ function busContract(name: string, make: () => MessageBus) {
       const msg = { n: 1, nested: { x: [1, 2] } };
       await bus.publish(`test:${name}:a`, msg);
       for (let i = 2; i <= 50; i++) await bus.publish(`test:${name}:a`, { n: i });
-      msg.nested.x.push(3);
+      // A publisher may not change a message it published: Redis serialized it already,
+      // the local bus froze it (tests) — either way subscribers never see the change.
+      try {
+        msg.nested.x.push(3);
+      } catch {
+        // frozen
+      }
       await tick(100);
       expect(got.map((m) => (m as { n: number }).n)).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
       expect((got[0] as { nested: { x: number[] } }).nested.x).toEqual([1, 2]);
@@ -35,6 +41,32 @@ function busContract(name: string, make: () => MessageBus) {
 }
 
 busContract('local', () => new LocalBus());
+
+describe('local bus isolation modes', () => {
+  it("'freeze' (tests) makes any mutation of a published message throw", async () => {
+    const bus = new LocalBus();
+    const got: unknown[] = [];
+    await bus.subscribe('iso:a', (m) => got.push(m));
+    const msg = { nested: { x: [1] } };
+    await bus.publish('iso:a', msg);
+    expect(() => msg.nested.x.push(2)).toThrow(TypeError);
+    await tick(10);
+    expect(() => {
+      (got[0] as { nested: { y?: number } }).nested.y = 1;
+    }).toThrow(TypeError);
+  });
+
+  it("'none' (production) shares the message without copying", async () => {
+    const bus = new LocalBus({ isolation: 'none' });
+    const got: unknown[] = [];
+    await bus.subscribe('iso:b', (m) => got.push(m));
+    const msg = { n: 1 };
+    await bus.publish('iso:b', msg);
+    await tick(10);
+    expect(got[0]).toBe(msg);
+    expect(Object.isFrozen(msg)).toBe(false);
+  });
+});
 if (redisUrl) busContract('redis', () => new RedisBus(redisUrl));
 
 function leaseContract(name: string, make: () => LeaseManager) {
