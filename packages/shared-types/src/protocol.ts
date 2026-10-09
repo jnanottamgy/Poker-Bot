@@ -103,6 +103,13 @@ export interface PlayerSelfSummary {
   finishPosition: number | null;
   prizeMinor: number;
   handsPlayed: number;
+  /**
+   * Re-entry for this player (absent when the tournament has no re-entry).
+   * `available`: eliminated, re-entry still open (level, final table) and
+   * entries left — a hint for the "Re-enter" button; POST /api/player/reenter
+   * re-checks every rule.
+   */
+  reentry?: { available: boolean; entriesUsed: number; maxEntries: number; untilLevel: number };
 }
 
 export type ClientSnapshot =

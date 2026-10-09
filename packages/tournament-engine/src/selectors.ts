@@ -1,6 +1,7 @@
 import type { BlindClockState, PlayerId, PlayerSelfSummary, TournamentPublicSummary } from '@jpb/shared-types';
 import { bmGet, bmValues } from './bucketMap';
 import { currentLevel, levelRemainingMs, nextLevel } from './clock';
+import { reentryOpen } from './registration';
 import type { DirectorPlayer, DirectorState, DirectorTable } from './types';
 
 /** Public summary for players, spectators and displays. `lastSeq` is filled in by the host. */
@@ -52,6 +53,16 @@ export function playerSelf(state: DirectorState, playerId: PlayerId): PlayerSelf
     finishPosition: p.finishPosition,
     prizeMinor: p.prizeMinor,
     handsPlayed: p.stats.handsPlayedTotal,
+    ...(state.config.reentry.enabled
+      ? {
+          reentry: {
+            available: p.status === 'ELIMINATED' && reentryOpen(state) && p.entries < state.config.reentry.maxEntriesPerPlayer,
+            entriesUsed: p.entries,
+            maxEntries: state.config.reentry.maxEntriesPerPlayer,
+            untilLevel: state.config.reentry.untilLevel,
+          },
+        }
+      : {}),
   };
 }
 

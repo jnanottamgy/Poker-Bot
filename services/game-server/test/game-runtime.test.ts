@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { verifyHand } from '@jpb/fairness-engine/node';
-import type { TournamentPublicSummary } from '@jpb/shared-types';
+import type { PlayerSelfSummary, TournamentPublicSummary } from '@jpb/shared-types';
 import type { DirectorState } from '@jpb/tournament-engine';
 import type { Database } from '../src/persistence/db';
 import { fairnessRecordOf } from '../src/game/table-actor';
@@ -118,11 +118,18 @@ describe.skipIf(!TEST_DATABASE_URL)('game runtime: complete tournaments on Postg
         const busted = await fx.store.repos.q.query<{ player_id: string }>(`SELECT player_id FROM tournament_players WHERE tournament_id = $1 AND status = 'ELIMINATED' LIMIT 1`, [t.id]);
         const pid = busted.rows[0]?.player_id;
         if (!pid) return;
+        // The player's own summary tells the app to offer "Re-enter"…
+        const before = await fx.rt.game.directorQuery<PlayerSelfSummary>(t.id, { q: 'PLAYER_SELF', playerId: pid });
+        if (before?.status !== 'ELIMINATED') return;
+        expect(before.reentry).toMatchObject({ available: true, entriesUsed: 1 });
         const r = await fx.registration.reenter(pid);
         expect(r, JSON.stringify(r)).toMatchObject({ ok: true, entryNumber: 2 });
         reentered = pid;
         const again = await fx.registration.reenter(pid);
         expect(again.ok).toBe(false);
+        // …and no longer once the last entry is used.
+        const after = await fx.rt.game.directorQuery<PlayerSelfSummary>(t.id, { q: 'PLAYER_SELF', playerId: pid });
+        expect(after?.reentry).toMatchObject({ available: false, entriesUsed: 2 });
       },
     });
     expect(reentered).not.toBeNull();
