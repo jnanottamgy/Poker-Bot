@@ -1,0 +1,119 @@
+/* Settings (§2.21). Classes: acr-settings-*. Tokens from @jpb/ui. */
+
+.acr-settings {
+  gap: var(--acr-gap-sm, 12px);
+}
+.acr-settings.is-stale .acr-settings-grid {
+  opacity: 0.6;
+}
+.acr-settings-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--jpb-info-line);
+  border-radius: var(--jpb-radius-md);
+  background: var(--jpb-info-soft);
+  color: var(--jpb-text-2);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-settings-mode > .jpb-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--jpb-info);
+}
+.acr-settings-mode.is-running {
+  border-color: var(--jpb-warning-line);
+  background: var(--jpb-warning-soft);
+}
+.acr-settings-mode.is-running > .jpb-icon {
+  color: var(--jpb-warning);
+}
+.acr-settings-mode.is-ended {
+  border-color: var(--jpb-border-strong);
+  background: var(--jpb-surface);
+}
+.acr-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.acr-settings-col {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.acr-settings-flags {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.acr-settings-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--jpb-border);
+  border-radius: var(--jpb-radius-md);
+  background: var(--jpb-bg-raised);
+}
+.acr-settings-flag.is-changed {
+  border-color: var(--jpb-info-line);
+}
+.acr-settings-flag > .jpb-toggle {
+  flex: 1;
+}
+.acr-settings-flag > .jpb-badge {
+  margin-top: 12px;
+}
+.acr-settings-flag__icon {
+  flex: none;
+  margin-top: 14px;
+  color: var(--jpb-accent);
+}
+.acr-settings-delay {
+  max-width: 240px;
+  margin-top: 12px;
+}
+.acr-settings-note {
+  margin-top: 10px;
+  color: var(--jpb-warning);
+  font-size: var(--jpb-fs-sm);
+}
+.acr-settings-savebar {
+  position: sticky;
+  z-index: 3;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--jpb-border-strong);
+  border-radius: var(--jpb-radius-lg);
+  background: var(--jpb-elevated);
+  box-shadow: var(--jpb-shadow-2);
+}
+.acr-settings-savebar__status {
+  flex: 1 1 260px;
+  font-size: var(--jpb-fs-sm);
+}
+.acr-settings-savebar__status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.acr-settings-savebar__status .is-ok > .jpb-icon {
+  color: var(--jpb-accent);
+}
+.acr-settings-savebar__status .is-bad {
+  color: var(--jpb-warning);
+}
+@media (max-width: 1024px) {
+  .acr-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
